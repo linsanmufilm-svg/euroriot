@@ -1,0 +1,1701 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>歐洲近期示威與暴動熱區地圖 (Google Maps Platform &amp; 互動縮放版)</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* CF2 Compliance: Explicit height on #google-map and gmp-map so map never collapses to 0x0 */
+    #google-map {
+      width: 100%;
+      height: 600px;
+    }
+    #vector-map-wrapper {
+      width: 100%;
+      height: 600px;
+      cursor: grab;
+      touch-action: none;
+    }
+    #vector-map-wrapper.dragging {
+      cursor: grabbing;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.85); opacity: 0.85; }
+      70% { transform: scale(2.3); opacity: 0; }
+      100% { transform: scale(2.3); opacity: 0; }
+    }
+    .hotspot-pulse {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: pulse-ring 2.2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    .hotspot-node {
+      cursor: pointer;
+      transition: transform 0.2s ease, filter 0.2s ease;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    .hotspot-node:hover {
+      transform: scale(1.28);
+      filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.9));
+    }
+    .country-poly {
+      transition: fill 0.25s ease, stroke 0.25s ease;
+    }
+    .country-poly:hover {
+      filter: brightness(1.15);
+    }
+    .spillover-line {
+      stroke-dasharray: 6 5;
+      animation: dash-flow 18s linear infinite;
+    }
+    @keyframes dash-flow {
+      to { stroke-dashoffset: -120; }
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-4 md:p-6 select-none">
+
+  <div class="max-w-7xl mx-auto space-y-5">
+    <!-- Header & Google Maps API Key Configuration Bar -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm space-y-4">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/15 text-red-500 border border-red-500/30">
+              <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+              LIVE MONITOR · 最後更新：2026-10-24
+            </span>
+            <span class="text-xs text-[var(--muted-foreground)] font-medium">
+              今日更新重點：法國10/24部署7萬警力、義大利「10月17日運動」與威尼斯聖馬可廣場最高警戒、西班牙宣布11/29提前大選
+            </span>
+          </div>
+          <h1 class="text-xl md:text-2xl font-bold mt-2 text-[var(--foreground)]">
+            歐洲近期示威與暴動事件熱區地圖 (European Unrest &amp; Riot Heatmap)
+          </h1>
+          <p class="text-sm text-[var(--muted-foreground)] mt-1 leading-relaxed">
+            可直接使用<strong>滑鼠滾輪縮放</strong>、<strong>按住左鍵拖曳地圖</strong>或<strong>右下角 ＋ / － 按鈕</strong>自由縮放；輸入 <code>GOOGLE_MAPS_API_KEY</code> 即可切換至原生 Google Maps 向量地圖與街景模式。
+          </p>
+        </div>
+
+        <!-- KPI Summary Pills -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+          <div class="bg-[var(--background)] border border-[var(--border)] rounded-xl px-3.5 py-2.5">
+            <div class="text-xs text-[var(--muted-foreground)]">監測熱點城市</div>
+            <div class="text-lg font-bold text-[var(--foreground)] mt-0.5">17 大熱區</div>
+            <div class="text-xs text-[var(--muted-foreground)]">涵蓋 21 座核心城市</div>
+          </div>
+          <div class="bg-[var(--background)] border border-red-500/30 rounded-xl px-3.5 py-2.5">
+            <div class="text-xs text-red-500 font-medium">Level 5 極高危暴動</div>
+            <div class="text-lg font-bold text-red-500 mt-0.5">3 大核心區</div>
+            <div class="text-xs text-[var(--muted-foreground)]">巴黎 · 米蘭 · 第比利斯</div>
+          </div>
+          <div class="bg-[var(--background)] border border-orange-500/30 rounded-xl px-3.5 py-2.5">
+            <div class="text-xs text-orange-500 font-medium">Level 4 嚴重衝突</div>
+            <div class="text-lg font-bold text-orange-500 mt-0.5">11 大熱區</div>
+            <div class="text-xs text-[var(--muted-foreground)]">新增威尼斯 · 羅馬 · 里爾</div>
+          </div>
+          <div class="bg-[var(--background)] border border-[var(--border)] rounded-xl px-3.5 py-2.5">
+            <div class="text-xs text-[var(--muted-foreground)]">10/24 週末維安部署</div>
+            <div class="text-lg font-bold text-[var(--foreground)] mt-0.5">7萬名警力</div>
+            <div class="text-xs text-[var(--muted-foreground)]">法國全國戒備 + 美使館警示</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Google Maps Platform API Key & Mode Switcher Bar -->
+      <div class="bg-[var(--background)] border border-[var(--border)] rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-500/15 text-blue-500 border border-blue-500/30">
+            Google Maps Platform
+          </span>
+          <span class="text-xs text-[var(--muted-foreground)]">
+            輸入您的 <code>GOOGLE_MAPS_API_KEY</code>（或免費申請 <a href="https://mapsplatform.google.com/maps-demo-key?utm_campaign=gmp_git_agentskills_v1" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline font-medium">Maps Demo Key ↗</a>）即可啟用原生 Google Maps 向量地圖（<code>AdvancedMarkerElement</code> + <code>Circle</code> 熱區）：
+          </span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <input
+            type="password"
+            id="gmp-api-key-input"
+            placeholder="貼上 GOOGLE_MAPS_API_KEY..."
+            class="bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-xs w-56 focus:outline-none focus:border-blue-500"
+          />
+          <button
+            onclick="activateGoogleMapsWithKey()"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition cursor-pointer"
+          >
+            載入 Google Maps
+          </button>
+          <button
+            onclick="switchMapEngine('vector')"
+            id="btn-engine-vector"
+            class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-80 transition cursor-pointer"
+            title="切換回免金鑰互動縮放向量熱力圖"
+          >
+            內建縮放熱區圖
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter & Layer Toolbar -->
+      <div class="pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
+        <!-- Category Filter -->
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-xs font-semibold text-[var(--muted-foreground)] mr-1">議題篩選：</span>
+          <button onclick="setCategory('all')" id="cat-all" class="cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition cursor-pointer">全部熱點 (17)</button>
+          <button onclick="setCategory('education')" id="cat-education" class="cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-80 transition cursor-pointer">教育與青年風暴</button>
+          <button onclick="setCategory('housing')" id="cat-housing" class="cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-80 transition cursor-pointer">居住正義與高房價</button>
+          <button onclick="setCategory('cost')" id="cat-cost" class="cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-80 transition cursor-pointer">通膨與反緊縮</button>
+          <button onclick="setCategory('governance')" id="cat-governance" class="cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-80 transition cursor-pointer">反貪腐與民主憲政</button>
+          <button onclick="setCategory('migration')" id="cat-migration" class="cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-80 transition cursor-pointer">移民與庇護衝突</button>
+        </div>
+
+        <!-- Severity & Map Controls -->
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="severity-select" onchange="setSeverity(this.value)" class="bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs font-medium">
+            <option value="0">所有風險等級 (Level 3–5)</option>
+            <option value="5">僅顯示 Level 5 (極高危暴動／宵禁)</option>
+            <option value="4">Level 4 以上 (嚴重警民衝突)</option>
+          </select>
+
+          <label class="inline-flex items-center gap-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 cursor-pointer">
+            <input type="checkbox" id="toggle-heatmap" checked onchange="renderAll()" class="accent-red-500" />
+            <span>熱區範圍渲染</span>
+          </label>
+
+          <label class="inline-flex items-center gap-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 cursor-pointer">
+            <input type="checkbox" id="toggle-spillover" checked onchange="renderAll()" class="accent-orange-500" />
+            <span>跨國擴散連線</span>
+          </label>
+
+          <label class="inline-flex items-center gap-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 cursor-pointer">
+            <input type="checkbox" id="toggle-labels" checked onchange="renderAll()" class="accent-amber-500" />
+            <span>城市名稱</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Split Layout: Map (Left 7 cols) + Event Detail Drawer (Right 5 cols) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      
+      <!-- Map Container -->
+      <div class="lg:col-span-7 bg-[var(--card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm flex flex-col">
+        <!-- Region Quick-Focus & Camera Control Bar -->
+        <div class="px-4 py-2.5 border-b border-[var(--border)] flex flex-wrap items-center justify-between gap-2 bg-[var(--background)]/50">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs text-[var(--muted-foreground)] font-medium">快速定位與縮放：</span>
+            <button onclick="focusRegion(47.0, 10.0, 4.3, 0, 0, 1000, 680)" class="px-2 py-1 text-xs rounded bg-[var(--card)] border border-[var(--border)] hover:border-red-500/50 transition cursor-pointer">全歐洲總覽</button>
+            <button onclick="focusRegion(47.2, 2.8, 6.0, 130, 240, 360, 260)" class="px-2 py-1 text-xs rounded bg-[var(--card)] border border-[var(--border)] hover:border-red-500/50 transition cursor-pointer">法・比・荷・英</button>
+            <button onclick="focusRegion(40.0, -5.0, 6.2, 10, 460, 260, 200)" class="px-2 py-1 text-xs rounded bg-[var(--card)] border border-[var(--border)] hover:border-red-500/50 transition cursor-pointer">伊比利半島 (西・葡)</button>
+            <button onclick="focusRegion(45.2, 10.8, 6.8, 280, 380, 250, 200)" class="px-2 py-1 text-xs rounded bg-[var(--card)] border border-[var(--border)] hover:border-red-500/50 transition cursor-pointer">北義重鎮 (米蘭・威尼斯・波隆納)</button>
+            <button onclick="focusRegion(42.0, 26.0, 5.3, 480, 410, 510, 250)" class="px-2 py-1 text-xs rounded bg-[var(--card)] border border-[var(--border)] hover:border-red-500/50 transition cursor-pointer">巴爾幹・希臘・喬治亞</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-[var(--muted-foreground)]">熱區半徑</span>
+            <input type="range" id="heat-radius" min="35" max="105" value="65" oninput="renderAll()" class="w-20 accent-red-500 cursor-pointer" />
+          </div>
+        </div>
+
+        <!-- Viewport Wrapper -->
+        <div class="relative w-full bg-[#0b1322] overflow-hidden">
+          <!-- 1) Native Google Maps JavaScript API Container (Hidden until API key is provided) -->
+          <div id="google-map" class="hidden"></div>
+
+          <!-- 2) Interactive Pan & Zoom Vector + Thermal Heatmap Viewport -->
+          <div id="vector-map-wrapper" class="relative overflow-hidden">
+            <svg id="europe-svg-base" viewBox="0 0 1000 680" class="w-full h-full block">
+              <defs>
+                <radialGradient id="ocean-glow" cx="45%" cy="50%" r="65%">
+                  <stop offset="0%" stop-color="#132238" />
+                  <stop offset="100%" stop-color="#09101d" />
+                </radialGradient>
+              </defs>
+              <rect width="1000" height="680" fill="url(#ocean-glow)" />
+              <g id="graticule-layer" stroke="#1e2f4d" stroke-width="0.6" stroke-dasharray="3 3" opacity="0.55"></g>
+              <g id="countries-layer"></g>
+            </svg>
+
+            <!-- Canvas Thermal Heatmap Layer -->
+            <canvas id="heatmap-canvas" width="1000" height="680" class="absolute inset-0 w-full h-full pointer-events-none opacity-85 mix-blend-screen"></canvas>
+
+            <!-- Interactive SVG Overlay for Spillover Lines & Hotspot Markers -->
+            <svg id="europe-svg-overlay" viewBox="0 0 1000 680" class="absolute inset-0 w-full h-full block">
+              <g id="spillover-layer"></g>
+              <g id="markers-layer"></g>
+            </svg>
+
+            <!-- Top-Left Hint Badge -->
+            <div class="absolute top-3 left-3 bg-[#0f172a]/85 backdrop-blur-md border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-200 pointer-events-none flex items-center gap-2">
+              <span>🖱️ 滾輪：無段縮放</span>
+              <span>｜</span>
+              <span>✋ 按住拖曳：平移地圖</span>
+              <span>｜</span>
+              <span id="zoom-level-indicator" class="font-mono text-amber-400 font-semibold">Zoom 1.0x</span>
+            </div>
+
+            <!-- Google-Maps-Style Floating Zoom & Pan Controls (Bottom Right) -->
+            <div class="absolute bottom-4 right-4 flex flex-col gap-1.5 z-10">
+              <button
+                onclick="zoomByFactor(1.35)"
+                class="w-9 h-9 rounded-lg bg-[#0f172a]/95 hover:bg-slate-800 text-white border border-slate-600 shadow-lg flex items-center justify-center text-lg font-bold transition cursor-pointer"
+                title="放大地圖 (Zoom In)"
+              >＋</button>
+              <button
+                onclick="zoomByFactor(1 / 1.35)"
+                class="w-9 h-9 rounded-lg bg-[#0f172a]/95 hover:bg-slate-800 text-white border border-slate-600 shadow-lg flex items-center justify-center text-lg font-bold transition cursor-pointer"
+                title="縮小地圖 (Zoom Out)"
+              >－</button>
+              <button
+                onclick="focusRegion(47.0, 10.0, 4.3, 0, 0, 1000, 680)"
+                class="w-9 h-9 rounded-lg bg-[#0f172a]/95 hover:bg-slate-800 text-slate-200 border border-slate-600 shadow-lg flex items-center justify-center text-xs font-bold transition cursor-pointer"
+                title="重置全歐洲視角 (Reset Zoom)"
+              >1:1</button>
+            </div>
+          </div>
+
+          <!-- Floating Legend (Bottom Left) -->
+          <div class="absolute bottom-3 left-3 bg-[#0f172a]/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 text-slate-200 shadow-lg max-w-xs pointer-events-none z-10">
+            <div class="text-xs font-bold text-slate-100 mb-1.5 flex items-center justify-between">
+              <span>熱區風險等級圖例 (Severity)</span>
+            </div>
+            <div class="space-y-1.5 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-red-500 ring-4 ring-red-500/30 shrink-0"></span>
+                <span><strong>Level 5 極高危</strong>：大規模暴動・縱火劫掠・局部宵禁／軍隊進駐</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-orange-500 ring-2 ring-orange-500/30 shrink-0"></span>
+                <span><strong>Level 4 高危</strong>：激烈警民衝突・水炮催淚瓦斯・強行清場</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-amber-400 shrink-0"></span>
+                <span><strong>Level 3 中高危</strong>：全國罷工遊行・抗議營地・高度維安戒備</span>
+              </div>
+              <div class="flex items-center gap-2 pt-1 border-t border-slate-700/70 text-slate-300">
+                <span class="w-5 border-t-2 border-dashed border-orange-400 shrink-0"></span>
+                <span>跨國抗爭外溢與串聯軌跡</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mandatory Google Maps Attribution Bar -->
+        <div class="px-4 py-2 border-t border-[var(--border)] bg-[var(--background)]/60 flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+          <span>地圖資料與座標定位支援：<strong>Google Maps</strong> (`AdvancedMarkerElement` / `Circle` / `Polyline`)</span>
+          <span id="active-engine-badge" class="font-mono text-xs">目前引擎：內建無段縮放熱區地圖 (支援滾輪與拖曳)</span>
+        </div>
+      </div>
+
+      <!-- Right Detail Panel (5 cols) -->
+      <div class="lg:col-span-5 bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm flex flex-col gap-4" id="detail-panel">
+        <!-- Populated dynamically by selectHotspot() -->
+      </div>
+
+    </div>
+
+    <!-- Cross-Country Comparative Analysis & Timeline Section -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-[var(--border)]">
+        <div>
+          <h2 class="text-lg font-bold text-[var(--foreground)]">歐洲示威與暴動熱點完整名冊與來源出處索引</h2>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">點擊任一城市卡片可在上方地圖自動縮放定位並顯示完整報告；所有新聞與研究來源均可直接點擊開啟。</p>
+        </div>
+        <div class="text-xs text-[var(--muted-foreground)] font-medium" id="filter-count-label">顯示 14 / 14 個熱區</div>
+      </div>
+
+      <div id="cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <script src="./env-config.js" onerror=""></script>
+  <script>
+    // =========================================================================
+    // 1. PROJECTION ENGINE & INTERACTIVE PAN/ZOOM CAMERA
+    // =========================================================================
+    const LON_MIN = -12.0, LON_MAX = 46.5;
+    const LAT_MIN = 35.0, LAT_MAX = 61.0;
+    let currentViewBox = [0, 0, 1000, 680]; // [vx, vy, vw, vh]
+    let activeEngine = "vector"; // 'vector' | 'google'
+
+    function mercY(lat) {
+      const rad = (lat * Math.PI) / 180;
+      return Math.log(Math.tan(Math.PI / 4 + rad / 2));
+    }
+    const MERC_MIN = mercY(LAT_MIN);
+    const MERC_MAX = mercY(LAT_MAX);
+
+    function project(lat, lon) {
+      const x = ((lon - LON_MIN) / (LON_MAX - LON_MIN)) * 1000;
+      const y = (1 - (mercY(lat) - MERC_MIN) / (MERC_MAX - MERC_MIN)) * 680;
+      return [Number(x.toFixed(1)), Number(y.toFixed(1))];
+    }
+
+    function applyViewBox(vx, vy, vw, vh) {
+      // Clamp zoom between 1.0x (width=1000) and 8.0x (width=125)
+      vw = Math.max(125, Math.min(1000, vw));
+      vh = vw * 0.68;
+      vx = Math.max(0, Math.min(1000 - vw, vx));
+      vy = Math.max(0, Math.min(680 - vh, vy));
+
+      currentViewBox = [vx, vy, vw, vh];
+      const vb = `${vx.toFixed(1)} ${vy.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}`;
+      document.getElementById("europe-svg-base").setAttribute("viewBox", vb);
+      document.getElementById("europe-svg-overlay").setAttribute("viewBox", vb);
+
+      const zoomFactor = (1000 / vw).toFixed(1);
+      const ind = document.getElementById("zoom-level-indicator");
+      if (ind) ind.textContent = `Zoom ${zoomFactor}x`;
+
+      renderHeatmapCanvas();
+      renderOverlayMarkers();
+    }
+
+    function zoomByFactor(factor, centerX = null, centerY = null) {
+      if (activeEngine === "google" && gMapInstance) {
+        const curZoom = gMapInstance.getZoom() || 5;
+        gMapInstance.setZoom(curZoom + (factor > 1 ? 1 : -1));
+        return;
+      }
+      const [vx, vy, vw, vh] = currentViewBox;
+      const newW = Math.max(125, Math.min(1000, vw / factor));
+      const newH = newW * 0.68;
+      const cx = centerX !== null ? centerX : vx + vw / 2;
+      const cy = centerY !== null ? centerY : vy + vh / 2;
+      const ratioX = (cx - vx) / vw;
+      const ratioY = (cy - vy) / vh;
+      const newX = cx - ratioX * newW;
+      const newY = cy - ratioY * newH;
+      applyViewBox(newX, newY, newW, newH);
+    }
+
+    function focusRegion(lat, lon, gZoom, vx, vy, vw, vh) {
+      if (activeEngine === "google" && gMapInstance) {
+        gMapInstance.moveCamera({
+          center: { lat, lng: lon },
+          zoom: gZoom
+        });
+      }
+      applyViewBox(vx, vy, vw, vh);
+    }
+
+    // Attach Mouse Wheel Zoom & Drag Panning to #vector-map-wrapper
+    function setupVectorPanAndZoom() {
+      const wrapper = document.getElementById("vector-map-wrapper");
+      let isDragging = false;
+      let startClientX = 0, startClientY = 0;
+      let startViewBox = [0, 0, 1000, 680];
+
+      wrapper.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const rect = wrapper.getBoundingClientRect();
+        const relX = (e.clientX - rect.left) / rect.width;
+        const relY = (e.clientY - rect.top) / rect.height;
+        const [vx, vy, vw, vh] = currentViewBox;
+        const targetX = vx + relX * vw;
+        const targetY = vy + relY * vh;
+        const factor = e.deltaY < 0 ? 1.22 : 1 / 1.22;
+        zoomByFactor(factor, targetX, targetY);
+      }, { passive: false });
+
+      wrapper.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("button") || e.target.closest(".hotspot-node")) return;
+        isDragging = true;
+        wrapper.classList.add("dragging");
+        startClientX = e.clientX;
+        startClientY = e.clientY;
+        startViewBox = [...currentViewBox];
+        wrapper.setPointerCapture(e.pointerId);
+      });
+
+      wrapper.addEventListener("pointermove", (e) => {
+        if (!isDragging) return;
+        const rect = wrapper.getBoundingClientRect();
+        const dx = e.clientX - startClientX;
+        const dy = e.clientY - startClientY;
+        const [svx, svy, svw, svh] = startViewBox;
+        const mapDx = (dx / rect.width) * svw;
+        const mapDy = (dy / rect.height) * svh;
+        applyViewBox(svx - mapDx, svy - mapDy, svw, svh);
+      });
+
+      const stopDrag = () => {
+        isDragging = false;
+        wrapper.classList.remove("dragging");
+      };
+      wrapper.addEventListener("pointerup", stopDrag);
+      wrapper.addEventListener("pointercancel", stopDrag);
+    }
+
+    // =========================================================================
+    // 2. GEOGRAPHIC COUNTRY POLYGONS
+    // =========================================================================
+    const EUROPE_COUNTRIES = [
+      {
+        code: "PT", name: "葡萄牙", severity: 4,
+        polys: [[[-9.5,37.0],[-8.9,37.0],[-7.4,37.2],[-7.0,38.8],[-6.2,41.5],[-8.2,42.1],[-8.9,41.9],[-8.7,40.1],[-9.5,38.7]]]
+      },
+      {
+        code: "ES", name: "西班牙", severity: 4,
+        polys: [
+          [[-9.3,43.0],[-7.5,43.7],[-1.8,43.4],[3.3,42.4],[0.8,40.7],[-0.4,39.5],[-0.7,37.6],[-2.2,36.7],[-5.6,36.0],[-7.4,37.2],[-7.0,38.8],[-6.2,41.5],[-8.2,42.1],[-8.9,41.9]],
+          [[2.3,39.6],[3.5,39.8],[3.4,39.3],[2.4,39.3]]
+        ]
+      },
+      {
+        code: "FR", name: "法國", severity: 5,
+        polys: [
+          [[-1.8,43.4],[-1.2,46.0],[-4.8,48.0],[-4.6,48.6],[-1.6,48.6],[-1.9,49.7],[1.6,50.1],[2.5,51.1],[4.2,50.1],[6.0,49.5],[8.2,49.0],[7.6,47.6],[6.0,46.2],[7.0,45.3],[6.6,44.1],[7.5,43.8],[6.6,43.1],[5.0,43.3],[3.1,43.0],[3.3,42.4]],
+          [[9.4,43.0],[9.5,41.4],[8.6,41.6],[8.7,42.6]]
+        ]
+      },
+      {
+        code: "BE", name: "比利時", severity: 3,
+        polys: [[[2.5,51.1],[3.4,51.4],[4.4,51.4],[5.8,51.1],[6.1,50.5],[5.8,49.5],[4.2,50.1]]]
+      },
+      {
+        code: "NL", name: "荷蘭", severity: 4,
+        polys: [[[3.4,51.4],[4.2,52.1],[4.7,53.0],[6.1,53.4],[7.2,53.2],[7.0,52.2],[6.1,51.8],[5.8,51.1],[4.4,51.4]]]
+      },
+      {
+        code: "LU", name: "盧森堡", severity: 0,
+        polys: [[[5.8,49.5],[6.1,50.1],[6.5,49.8],[6.0,49.5]]]
+      },
+      {
+        code: "GB", name: "英國", severity: 4,
+        polys: [
+          [[-5.2,50.0],[-3.0,50.5],[1.4,51.3],[1.7,52.5],[0.1,53.5],[-0.4,54.5],[-2.0,55.8],[-3.1,56.0],[-2.0,57.7],[-4.0,57.8],[-5.0,58.6],[-5.8,57.4],[-5.5,56.0],[-4.8,54.7],[-3.1,54.1],[-3.1,53.4],[-4.5,53.3],[-4.2,52.0],[-5.2,51.8],[-3.2,51.4],[-5.0,50.5]],
+          [[-8.1,54.5],[-7.3,55.2],[-6.1,55.2],[-5.5,54.3],[-6.6,54.0]]
+        ]
+      },
+      {
+        code: "IE", name: "愛爾蘭", severity: 3,
+        polys: [[[-10.0,51.6],[-9.5,52.5],[-10.0,54.0],[-8.3,54.5],[-7.3,55.2],[-8.1,54.5],[-6.6,54.0],[-6.0,53.4],[-6.2,52.2],[-8.0,51.8]]]
+      },
+      {
+        code: "DE", name: "德國", severity: 3,
+        polys: [[[6.1,50.5],[6.1,51.8],[7.0,52.2],[7.2,53.2],[8.6,53.9],[8.6,54.8],[10.0,54.8],[11.1,54.4],[12.5,54.4],[14.2,53.9],[14.4,52.6],[15.0,51.1],[14.3,50.9],[12.9,50.4],[12.1,50.3],[13.8,48.8],[12.9,48.1],[13.0,47.5],[10.2,47.3],[9.6,47.5],[7.6,47.6],[8.2,49.0],[6.0,49.5]]]
+      },
+      {
+        code: "CH", name: "瑞士", severity: 0,
+        polys: [[[6.0,46.2],[7.6,47.6],[9.6,47.5],[10.5,46.9],[10.1,46.2],[8.9,45.8],[7.9,45.9],[7.0,45.8]]]
+      },
+      {
+        code: "IT", name: "義大利", severity: 5,
+        polys: [
+          [[6.6,44.1],[7.0,45.8],[8.9,45.8],[10.5,46.9],[12.2,47.1],[13.7,46.5],[13.8,45.6],[12.3,45.4],[12.3,44.0],[13.9,43.5],[14.8,42.1],[16.1,41.9],[15.9,41.5],[18.5,40.1],[17.9,40.0],[16.6,39.9],[17.1,39.0],[15.6,38.0],[15.8,39.9],[13.9,41.2],[12.2,41.7],[10.3,43.7],[9.0,44.4],[7.5,43.8]],
+          [[12.4,37.8],[15.6,38.2],[15.1,36.7],[12.5,37.6]],
+          [[8.2,41.0],[9.8,41.0],[9.6,39.0],[8.4,39.0]]
+        ]
+      },
+      {
+        code: "AT", name: "奧地利", severity: 0,
+        polys: [[[9.6,47.5],[10.2,47.3],[13.0,47.5],[12.9,48.1],[13.8,48.8],[15.0,49.0],[16.9,48.6],[17.1,47.8],[16.0,46.7],[13.7,46.5],[12.2,47.1],[10.5,46.9]]]
+      },
+      {
+        code: "CZ", name: "捷克", severity: 0,
+        polys: [[[12.1,50.3],[12.9,50.4],[14.3,50.9],[15.0,51.1],[17.0,50.4],[18.8,49.9],[18.8,49.5],[16.9,48.6],[15.0,49.0],[13.8,48.8]]]
+      },
+      {
+        code: "PL", name: "波蘭", severity: 0,
+        polys: [[[14.2,53.9],[16.5,54.5],[18.6,54.7],[19.6,54.4],[23.5,54.3],[23.9,52.1],[24.1,50.5],[22.6,49.0],[19.5,49.5],[18.8,49.9],[17.0,50.4],[15.0,51.1],[14.4,52.6]]]
+      },
+      {
+        code: "DK", name: "丹麥", severity: 0,
+        polys: [
+          [[8.6,54.8],[8.1,56.0],[8.6,57.1],[10.6,57.7],[10.9,56.4],[9.8,55.0]],
+          [[11.0,55.7],[12.6,56.1],[12.1,54.8],[11.1,54.9]]
+        ]
+      },
+      {
+        code: "NO", name: "挪威", severity: 0,
+        polys: [[[5.0,59.0],[5.2,60.8],[12.0,60.8],[11.5,59.0],[8.0,58.0]]]
+      },
+      {
+        code: "SE", name: "瑞典", severity: 0,
+        polys: [[[11.5,59.0],[12.0,60.8],[17.8,60.8],[18.8,59.8],[16.5,56.2],[14.2,55.4],[12.8,55.4],[12.0,57.5]]]
+      },
+      {
+        code: "SK", name: "斯洛伐克", severity: 3,
+        polys: [[[16.9,48.6],[18.8,49.5],[19.5,49.5],[22.6,49.0],[22.1,48.4],[18.8,47.8],[17.1,47.8]]]
+      },
+      {
+        code: "HU", name: "匈牙利", severity: 0,
+        polys: [[[16.0,46.7],[17.1,47.8],[18.8,47.8],[22.1,48.4],[22.9,47.9],[21.3,46.2],[18.9,45.9],[16.9,46.1]]]
+      },
+      {
+        code: "SI", name: "斯洛維尼亞", severity: 0,
+        polys: [[[13.7,46.5],[16.0,46.7],[16.5,46.5],[15.3,45.4],[13.8,45.6]]]
+      },
+      {
+        code: "HR", name: "克羅埃西亞", severity: 0,
+        polys: [[[13.8,45.6],[15.3,45.4],[16.5,46.5],[16.9,46.1],[18.9,45.9],[19.1,45.2],[15.8,45.2],[15.7,44.4],[18.5,42.4],[16.0,43.0],[14.8,44.8],[13.9,44.8]]]
+      },
+      {
+        code: "BA", name: "波士尼亞", severity: 0,
+        polys: [[[15.8,45.2],[19.1,45.2],[19.6,44.0],[18.5,42.6],[17.6,43.0],[15.7,44.4]]]
+      },
+      {
+        code: "RS", name: "塞爾維亞", severity: 4,
+        polys: [[[18.9,45.9],[21.3,46.2],[22.7,44.2],[23.0,43.2],[21.8,42.3],[20.6,42.2],[19.6,43.5],[19.6,44.0],[19.1,45.2]]]
+      },
+      {
+        code: "ME", name: "蒙特內哥羅", severity: 0,
+        polys: [[[18.5,42.4],[18.5,42.6],[19.6,43.5],[20.4,42.8],[19.4,41.9]]]
+      },
+      {
+        code: "AL", name: "阿爾巴尼亞", severity: 4,
+        polys: [[[19.4,41.9],[20.4,42.6],[20.6,41.5],[21.0,40.9],[20.0,39.7],[19.3,40.4]]]
+      },
+      {
+        code: "MK", name: "北馬其頓", severity: 0,
+        polys: [[[20.6,42.2],[21.8,42.3],[23.0,41.9],[22.9,41.1],[21.0,40.9],[20.6,41.5]]]
+      },
+      {
+        code: "GR", name: "希臘", severity: 3,
+        polys: [[[20.0,39.7],[21.0,40.9],[22.9,41.1],[26.3,41.7],[26.0,40.8],[24.0,40.2],[23.0,40.5],[24.1,38.0],[22.5,36.4],[21.1,37.8],[20.0,39.2]]]
+      },
+      {
+        code: "BG", name: "保加利亞", severity: 3,
+        polys: [[[22.7,44.2],[26.0,43.9],[28.6,43.7],[27.9,42.0],[26.3,41.7],[22.9,41.1],[23.0,41.9],[21.8,42.3],[23.0,43.2]]]
+      },
+      {
+        code: "RO", name: "羅馬尼亞", severity: 0,
+        polys: [[[21.3,46.2],[22.9,47.9],[26.6,48.2],[28.2,45.5],[29.7,45.2],[28.6,43.7],[26.0,43.9],[22.7,44.2]]]
+      },
+      {
+        code: "MD", name: "摩爾多瓦", severity: 0,
+        polys: [[[26.6,48.2],[28.2,48.2],[30.1,46.4],[28.2,45.5]]]
+      },
+      {
+        code: "UA", name: "烏克蘭", severity: 0,
+        polys: [[[22.6,49.0],[24.1,50.5],[23.9,51.5],[30.5,51.5],[34.0,52.0],[38.0,49.8],[40.0,49.3],[38.2,47.1],[35.0,46.0],[33.5,46.0],[30.1,46.4],[28.2,48.2],[26.6,48.2],[22.9,47.9],[22.1,48.4]]]
+      },
+      {
+        code: "BY", name: "白俄羅斯", severity: 0,
+        polys: [[[23.9,52.1],[23.6,53.9],[26.6,55.7],[30.8,55.5],[32.7,53.5],[30.5,51.5],[23.9,51.5]]]
+      },
+      {
+        code: "LT", name: "立陶宛", severity: 0,
+        polys: [[[21.1,55.3],[21.1,56.0],[24.9,56.4],[26.6,55.7],[23.6,53.9],[23.5,54.3]]]
+      },
+      {
+        code: "LV", name: "拉脫維亞", severity: 0,
+        polys: [[[21.1,56.0],[21.8,57.6],[24.4,57.9],[27.8,57.5],[28.2,56.2],[26.6,55.7],[24.9,56.4]]]
+      },
+      {
+        code: "EE", name: "愛沙尼亞", severity: 0,
+        polys: [[[23.5,58.0],[24.0,59.5],[28.1,59.5],[27.8,57.5],[24.4,57.9]]]
+      },
+      {
+        code: "TR", name: "土耳其", severity: 0,
+        polys: [
+          [[26.3,41.7],[27.9,42.0],[29.0,41.2],[26.0,40.1],[26.0,40.8]],
+          [[26.2,39.9],[29.2,41.1],[36.0,41.8],[41.5,41.5],[43.5,40.5],[44.5,38.0],[36.0,36.8],[27.2,37.0]]
+        ]
+      },
+      {
+        code: "GE", name: "喬治亞", severity: 5,
+        polys: [[[40.0,43.4],[43.5,43.0],[46.5,41.9],[46.4,41.1],[43.5,41.1],[41.5,41.5]]]
+      }
+    ];
+
+    // =========================================================================
+    // 3. HOTSPOT INTELLIGENCE DATASET
+    // =========================================================================
+    const HOTSPOTS = [
+      {
+        id: "paris-fr",
+        city: "巴黎 (Paris)",
+        country: "法國 🇫🇷",
+        countryCode: "FR",
+        lat: 48.8566,
+        lon: 2.3522,
+        severity: 5,
+        heatWeight: 1.0,
+        period: "2026年9月 – 10月24日（今日最高戒備）",
+        scale: "全法 55萬–80萬人上街 / 10月24日部署 7萬名警力",
+        categories: ["education", "cost"],
+        tags: ["10/24部署7萬警力", "局部宵禁", "哨兵行動與反恐部隊", "美使館安全警示"],
+        summary: "【10/24 最新更新】法國抗爭浪潮核心震央。繼10月17–18日週末爆發嚴重打砸搶與縱火後，法國內政部針對 10月24日週末宣布全國部署 7萬名警察、反恐精銳部隊與哨兵行動軍隊，美國駐法大使館亦發布安全警示。",
+        catalyst: "2026年9月起由法國高中生（Lycée）針對師資短缺、校舍老舊發起罷課與封鎖，隨後與總工會（CGT）抗議能源與物價飆漲的罷工匯流，形成跨階層的「鬥爭匯聚（Convergence des luttes）」。",
+        unrestDetails: "10月17–18日週末大遊行遭極端份子與暴徒劫持，巴黎市中心爆發嚴重縱火、焚燒車輛與洗劫精品店衝突，全法數千人被捕，多個地鐵站被迫關閉。",
+        govResponse: "【10/24 最新動態】馬克宏政府承認初期維安失控，宣布全面禁止未申報之「非法集會」，並在巴黎等大城實施局部宵禁。針對 10月24日週末新一波示威，當局動員 7萬名警察與憲兵（含反恐戰術單位與哨兵部隊）嚴陣以待。",
+        sources: [
+          { title: "CNN — France deploys 70,000 police officers ahead of October 24 weekend protests", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEolM4zhC9zPZTwYmJ-bJLArFCoKNddNX26BCNvFu0uhyQwD33icjojK_IZyMghIc2iEjxm6_qiFCSRml9iDg-z_W-iiTNQpUG6LVeLkRKu3_fno_IR8Z1ko_4Y82HwtdkFTCa5AozsLo_cJT6iEjfsA_yzqnrdhuqM0z2XiHiGcVSlvjQp2ETviA==" },
+          { title: "U.S. Embassy in France — Demonstration & Security Alert for October 24 Weekend", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEYtnYdxXNUMuWmsrqyVPDdqHssgUSGyzq8VqwqJ0YTKddx5_kiD-LBT3FskuSV_n2LVNp9oS45GU2lf_ApB9NVJrwXSpVjBAHXSOkVPMY_fM7l6A5HCvdcm02QrrwQXYA59HjbGKmkph6JgnqjwEKDMW6p9bVGNXl9wtKeAC95IiOskegsjUw=" },
+          { title: "The Guardian — France bans unnotified protests after weekend riots & town hall arson", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFR6lomktNi-tdDQXhDzXfVGHReut_ZvHBkcrPmqgc5OtqNCUvg4YB8AG3LlfCUK8ZbHxVaSu2bnas_4uuCYaYv-LBOjtoKWF86v_Gud5JGbaQcqTbB7dNTv4QrvF2HVwqHLRRCPa3aYISWwHrPjVujywW8BkvPK2Ua7ehTuC33UUwR-7_m2m4qhtlL-k5Ct-PQ7z6suIg-HQ==" },
+          { title: "Alliance4Europe — Foreign disinformation amplification during Autumn 2026 French riots", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEDSJqgTkiQgK-2QG4RfwvnOtW-yiUtGRnkz7wCkn6FZQXfPfFcwKOZmzTaKYl5HkoMfljj9_9ORjb0Oif-n0Sh4kxjwrDrLCLw7Wz5gaPMkC3Xk8w7maNx2RouvhlLKtDN8klgkhVCrPSVKNUEKKt7xd7_aBI-27sNVGtucWbpcMxtMsT9tjr44iJv3FKeKYyNZ_Tr9-al9UdQndRjAyTT2uqAqQgqme4h3yK8mtLidyBGjVOC" }
+        ]
+      },
+      {
+        id: "milan-it",
+        city: "米蘭 (Milan)",
+        country: "義大利 🇮🇹",
+        countryCode: "IT",
+        lat: 45.4642,
+        lon: 9.1900,
+        severity: 5,
+        heatWeight: 0.95,
+        period: "2026年10月 – 10月24日週末警戒",
+        scale: "全義逾 10萬人響應 / 500名軍人進駐米蘭",
+        categories: ["cost", "education"],
+        tags: ["10月17日運動", "美領事館避行警告", "500名軍隊進駐", "大教堂廣場暴動"],
+        summary: "【10/24 最新更新】米蘭大教堂廣場爆發嚴重打砸搶後，新興網路組織「10月17日運動」號召每週末持續抗爭至政府下台；美國領事館發布 10月24日週末安全警告，呼籲避開米蘭大教堂廣場。",
+        catalyst: "由義大利 Z 世代青年與勞工發起，抗議高通膨、能源價格飆升與教育經費削減；新成立的網路組織「10月17日運動（17 October Movement）」進一步號召全國週末常態化抗爭。",
+        unrestDetails: "米蘭市中心（特別是米蘭大教堂廣場 Piazza del Duomo 周邊）遊行惡化為街頭巷戰，蒙面暴徒投擲石塊與磚頭、焚燒路障並搶劫精品名店，數百人被捕（包含大量未成年青年）。",
+        govResponse: "【10/24 最新動態】梅洛尼政府緊急批准新治安法令，增設「示威中暴力參與罪」、擴大警方預防性拘捕權、要求未成年暴徒父母連帶賠償，並派駐 500 名陸軍士兵協防米蘭。美國駐米蘭總領事館已發布週末避行大教堂廣場警告。",
+        sources: [
+          { title: "The Guardian — Italy '17 October Movement' calls for ongoing weekend protests as Meloni cracks down", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHcJOKXKaNJIaOYKZtISWGm5xTmJvNgnZ6FATheNEROvbb7r404nYa3LKl07v9dD6cBxQL9mbJNhmAVBvExPm1o5ovWB9h1ksRrA9CKfUE2xKiqrFMSIV6TjUcQMrYB5JMdoJ8Oy-Ap8k8-tMpN4v_1EZKkAkaXbuvZOvWbfTIpgE9k8QcgK3u0WM81pijmvaGqNvsNgvFczEpd0VqUdeECLxcwaqctvFdr" },
+          { title: "U.S. Consulate General Milan — Demonstration Alert: Avoid Piazza del Duomo area", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4eYFsTtaJktRAAd7UykWRZt8Tak1qmAh0My3nNWrQ1NcmaxfjjRtJ0ABFpnmzKxAYeGvHCEwp33HzSjZmyXQRNA2TDkp2nsbIysQHq3tMRlWA1ExjDBviF2xNyARyr4wJlCld6oFsZC0i3bQzLLWIuBsK61EHOkFOLAuDcdNSJ-92xtxOfzSjmkQXQED1yBBMfaGd" },
+          { title: "Washington Post — Wave of European cost-of-living protests turns violent in Italy and France", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQET8lFOTE5vwEZXEyscEalY9jX4IRfZ8qbF9VwtDS1wrO5TxFXlkf1jEoCrZ0cfsHo8p2TFBGIEtTf_0OTD__rvLEWwQP4dQD5x73n8-QCcO_0VNMetU01qAATVEWWgecx3SLHGyIoViPjVYfpiQmqshuXyIMA2HOV_NvMtla_CZLDUXd45jhRqKvtdtdpUc86A3dsS2aCXCw06Oo_HMIfvH2QqpLcJc4Q6BS9tZyVUGI4yL92pcWr8zrsKONFx1wSlVPxymyqsqJyRFZQtzr_GeBlavp-axW_7-LoF" }
+        ]
+      },
+      {
+        id: "tbilisi-ge",
+        city: "第比利斯 (Tbilisi)",
+        country: "喬治亞 🇬🇪",
+        countryCode: "GE",
+        lat: 41.7151,
+        lon: 44.8271,
+        severity: 5,
+        heatWeight: 0.92,
+        period: "2024年11月 – 2026年10月持續衝突",
+        scale: "連月數萬人夜間街頭巷戰",
+        categories: ["governance"],
+        tags: ["暫停入歐談判抗爭", "衝擊總統府", "水炮與煙火攻防", "歐美制裁"],
+        summary: "因執政黨宣布凍結加入歐盟談判至2028年，引發首都第比利斯連月夜間街頭巷戰與衝擊奧爾貝利亞尼總統府事件。",
+        catalyst: "執政黨「喬治亞之夢（Georgian Dream）」宣布暫停歐盟入盟談判至 2028 年並拒絕歐盟援助資金，加上爭議性選舉結果，被親歐盟民眾視為背棄憲法親西方路線。",
+        unrestDetails: "第比利斯魯斯塔韋利大道（Rustaveli Avenue）與國會大樓外成為長期夜戰戰場。示威者構築路障並以高空煙火、石塊對抗鎮暴警察；地方選舉期間更爆發試圖衝擊總統府（Orbeliani Palace）的激烈衝突。",
+        govResponse: "鎮暴部隊密集動用水炮車、催淚瓦斯與胡椒噴霧清場並大規模逮捕異議人士，引發歐盟與美國對多名喬治亞高階官員實施簽證與財務制裁。",
+        sources: [
+          { title: "The Guardian — Tbilisi nightly street battles over EU accession freeze", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEcfuq7v-OvwLg2NS9zDSs-abXduZJ6dVlW6bupy5lMOUVYmp9T_bQqLx9dLWgMPYWS1_6s_nsFT9t7o3uxWwLgaRPUBID3Q0UsOB5M4XyvGZprO0PeNMWTbHJSEwq1-V0JsUlar8ADPO0VYLD7qxgK7oO2QRVrTv-qq8mSp_hk3nhlNDcGu8VXojhyZo_ej6zgAEPiFkI_X6MBsnAxR7BSSSyF" },
+          { title: "CBS News — Georgia protesters clash with riot police in Tbilisi", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFZJol4hik1gGxR2P3dEAxRGEWTpyMS5ZNmoBq1mP6saFtp7etk1daXOFAM2lakpTtEMCrbjcunPNKbitOMm42BuWyfeYmT1X8B5t_nIaoKcoQbXzzJ_HizoMULsKlxpVtzcv1BCuCQcpAVvFO7o2bCb3pKrg9TITkvT3NgbaN3s7sS_IexlbIebDAy" }
+        ]
+      },
+      {
+        id: "madrid-es",
+        city: "馬德里 (Madrid)",
+        country: "西班牙 🇪🇸",
+        countryCode: "ES",
+        lat: 40.4168,
+        lon: -3.7038,
+        severity: 4,
+        heatWeight: 0.90,
+        period: "2025年 – 2026年10月24日（政治震盪）",
+        scale: "太陽門廣場長期紮營 / 醞釀全國大罷工",
+        categories: ["housing", "cost"],
+        tags: ["宣布11/29提前大選", "房租暴漲230%逼遷案", "太陽門廣場帳篷營", "醞釀全國罷工"],
+        summary: "【10/24 最新更新】87歲身障老婦遭調漲 230% 房租逼遷離世引爆全國太陽門廣場紮營抗爭；因平價住房法案在國會受阻與民怨沸騰，首相桑傑士宣布於 2026年11月29日 提前舉行全國大選！",
+        catalyst: "馬德里 87 歲殘障老婦 María del Carmen (\"Maricarmen\") Abascal 遭投資基金將房租暴漲 230% 後強制驅離並於不久後離世，徹底引爆西班牙全國對炒房、短租失控與高房價的怒火。",
+        unrestDetails: "大批青年與住戶工會在馬德里太陽門廣場（Puerta del Sol）連續數週搭帳篷長期紮營，要求立即凍結租金與禁止脆弱族群逼遷，並正在串聯多年罕見的全國總罷工。",
+        govResponse: "【10/24 最新動態】面對全國民怨與國會僵局，西班牙首相桑傑士（Pedro Sánchez）宣布解散國會、定於 2026年11月29日 舉行高風險提前大選；美國駐西大使館亦針對選前密集示威發布警示。",
+        sources: [
+          { title: "The Irish Times — Spanish PM Pedro Sánchez calls snap election for November 29 amid housing unrest", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFQYiPKKwb-d78O6ITpTSznXkllqXiVuGBD8jk9ub4Gg04VcsW46qaZfV5Lel8L4XsC0Vk1YBS3rTMLXpDbuAsNLeLNk1ukOtQx8GXopjuB5x5JP9E5r8sTEAFKgJznEyXh5N-oNkyGKZprrENtVq6x2C7dIfuRtF67sdRZV7zR9r2UvAYJNAtaktIoB7aub2fxQVCA13FPUb4OYqEbRAmIEA==" },
+          { title: "The Guardian — 230% rent hike & eviction of 87-year-old Maricarmen Abascal sparks Madrid tent camps", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHxNyt4RXP4ib2kSSknJjI-Nj7QjCQvHt5hONHvxSVZYoV4n7xhCPwa6h6XyPJoqr4VTRR8aeUEOBn6XxyORgAfktxPjkQ4-DQJMVxeXqkKPPml7qEkGg68KgoamlXJMjZUzwChhRSomipIVI-xzNzZ5AuGZmk_F_pL" },
+          { title: "U.S. Embassy Madrid — Demonstration Alert ahead of November 2026 elections", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEZab2I_osGDCIsx7ICIPAkicX_x2RbsDDkmn_Z4bKQHRx8CfkwQxAHn9hOwc49KbtS_lfXOPROEi60Sm5xPe0AxxLBVk9Dy9YX40ftplv6i4rIg_HJK63mCMW0qxdy8tX2mPnbJAUg2zI-Ltbq1foarzqEx3sFGF0lGWThvmiMwQ1JhGURDPqF5JnQAFOYmuRyVUcARci0s4HaZmqef9AeR6ne6XCDPjCvnFN0HBIhfg==" }
+        ]
+      },
+      {
+        id: "lille-limoges-fr",
+        city: "里爾 & 利摩日 (Lille & Limoges)",
+        country: "法國 🇫🇷",
+        countryCode: "FR",
+        lat: 50.6292,
+        lon: 3.0573,
+        severity: 4,
+        heatWeight: 0.82,
+        period: "2026年10月17日 – 10月24日（今日新增熱點）",
+        scale: "市政廳與市政機構遭縱火 / 重兵戒備",
+        categories: ["education", "cost"],
+        tags: ["10/24新增熱點", "市政廳遭縱火", "極左翼與暴徒混入", "週末重兵部署"],
+        summary: "【10/24 新增熱區】法國抗議浪潮向北法里爾與中部利摩日蔓延，示威期間爆發針對市政廳與市政機構的縱火與打砸破壞。",
+        catalyst: "全法高生活成本、燃料價格飆漲與公立學校罷課潮在地方城市引發強烈共鳴。",
+        unrestDetails: "在 10月17–18日抗議高峰期間，利摩日（Limoges）與里爾（Lille）的遊行遭激進分子滲透，利摩日市政機構與市政建築遭到縱火與嚴重破壞，警民爆發激烈街頭對峙。",
+        govResponse: "納入法國內政部 10月24日週末 7萬名警力全國維安網，嚴格限制市中心未申報集會並強化市政建築防禦。",
+        sources: [
+          { title: "The Guardian — Municipal buildings and town halls targeted by arson in Limoges, Lille and Marseille", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE80LP8U2is1NWBxCg8YbWS5u0f4g_u-yvFCv-IGjG4W9nkgbqyU_Ot2nAdRfpuutWkOU-iyZKVHeU0EwDdBDqgBuLj-8tpyXkaZruuao2UiHfoR8eMNXH0HR1baYhEYpcxWJPp75MZFFgXYJEana6XXcCLouQrj_5SK58sgZiheO7BHUN87ztAH8mraQ==" },
+          { title: "The Local France — How high school blockades and fuel protests turned violent across French cities", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFB8biJoVF5frxIWaRm8pfHJi1h8RjRTDJ7u07RNTEUSay8xYoS7AOpFZIL9V5dEJtOvktEx-tw8NuOrvDlWhElw0ZWkdIJ8msq_P-TJ5dPXO8ohDVJdA2oittFQa24bTFfhKONYIryPK7LkBI8OWAhzY0OFKeM7OA8OvPAYEM9mKUmrXXUVitWO65rykLQUMaTcqN2DmAdmO3TWw==" }
+        ]
+      },
+      {
+        id: "rome-it",
+        city: "羅馬 & 南義幹道 (Rome & Southern Italy)",
+        country: "義大利 🇮🇹",
+        countryCode: "IT",
+        lat: 41.9028,
+        lon: 12.4964,
+        severity: 4,
+        heatWeight: 0.80,
+        period: "2026年10月17日 – 10月24日（今日新增熱點）",
+        scale: "首都大型集會 + 南義卡車司機一度封鎖幹道",
+        categories: ["cost", "education"],
+        tags: ["10/24新增熱點", "卡車司機反高油價封鎖", "反緊縮與低薪", "道路封鎖刑責加重"],
+        summary: "【10/24 新增熱區】北義動亂向南延燒，首都羅馬爆發青年與勞工反通膨大遊行，南義卡車司機亦因高油價發起道路封鎖抗爭。",
+        catalyst: "能源與柴油價格飆升重創運輸業與家庭生計，加上青年世代對低薪與教育資源削減的不滿。",
+        unrestDetails: "羅馬市中心出現大型青年與工會示威；南義卡車司機則發起針對高燃料成本的道路封鎖行動（後於政府施壓下暫時撤除糾察線），「10月17日運動」持續號召週末集結。",
+        govResponse: "梅洛尼政府除增派軍警外，正推動新法大幅加重「公民不服從與道路封鎖」之刑事罰則。",
+        sources: [
+          { title: "The Guardian — Rome demonstrations & southern Italy trucker fuel blockades", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHcJOKXKaNJIaOYKZtISWGm5xTmJvNgnZ6FATheNEROvbb7r404nYa3LKl07v9dD6cBxQL9mbJNhmAVBvExPm1o5ovWB9h1ksRrA9CKfUE2xKiqrFMSIV6TjUcQMrYB5JMdoJ8Oy-Ap8k8-tMpN4v_1EZKkAkaXbuvZOvWbfTIpgE9k8QcgK3u0WM81pijmvaGqNvsNgvFczEpd0VqUdeECLxcwaqctvFdr" },
+          { title: "Chatham House — Europe's socio-economic unrest and right-wing security responses", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGAHOiYmWPCq5ZIOBNe8Qs_62YhcI3cYVejnbChuKlE9vSoCYpk3fjV8M5eSs-g_vC1owv18lWoEDjha_k4jzOJ4BxIncjuhGTlq87Lvix4nwdLH46QSjGYQAfsllK2iKYa3ZoNmwQGOpC5PF2GoF2wBVe6_OAj4dvCdbBKUp78bc7KzU0WGl3EWdfSn-Po2TgrUhnv-B-02b8bca3TUFO5gzgu5r1unwOzdcreiuW1W2Jl7kGWDRs=" }
+        ]
+      },
+      {
+        id: "lisbon-pt",
+        city: "里斯本 (Lisbon)",
+        country: "葡萄牙 🇵🇹",
+        countryCode: "PT",
+        lat: 38.7223,
+        lon: -9.1393,
+        severity: 4,
+        heatWeight: 0.86,
+        period: "2026年10月",
+        scale: "數萬人遊行 / 羅西烏廣場拂曉清場衝突",
+        categories: ["housing", "cost"],
+        tags: ["無家可歸的一代", "房價十年翻倍", "羅西烏廣場清場", "人鏈封鎖"],
+        summary: "葡萄牙房價十年翻倍冠絕歐盟，青年在里斯本羅西烏廣場紮營抗議政府取消租金上限，遭警方拂曉突襲清場並逮捕數十人。",
+        catalyst: "官方數據顯示葡萄牙房價與新租約租金在 2015–2025 年間翻倍暴漲，遠超歐盟平均，而當地青年薪資卻停滯不前；加上政府放寬房東驅離房客程序並取消租金漲幅上限，引爆「無殼世代」怒火。",
+        unrestDetails: "示威者以「我們無法再這樣生活（We can no longer live like this）」為號召，在里斯本市中心羅西烏廣場（Rossio Square）搭設帳篷營地。警方發動黎明突襲強行拆除營地並拘捕數十名抗議者，隨後引發群眾組成大型人鏈封鎖街道與新一波全國示威。",
+        govResponse: "警方以「未經授權佔用公共空間」為由執行清場；國際特赦組織（Amnesty International）與民權團體則批評當局壓制和平居住權抗爭。",
+        sources: [
+          { title: "Al Jazeera — Portuguese police clear Lisbon & Porto housing protest camps", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGGgtKyy_EBhgIZNg7U_er4znwfPipd0OwJDgF7tVBRan1Rs2CJCin5BsfSxhWa_pNQTiGwqID_bcNUtY4sFfPUiuvOlHD_qUBT1hhi8YQ8cqlpNS1Iyb0FoA4cIdnjQzqAzKD8p-gAnmPbZKRAtq9MT7ywn1xGwR4doSmOL3nilpfkBj1lVodAx4163BxR5a1t8sXl80ZQUO9V4AgkT47xlLOhFALt24Y=" },
+          { title: "Amnesty International — Portugal housing rights demonstrations & police operations", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHGWBtp0PjWGcmz6muMDjNQb_CzkjIgi9tgsRZCReSPHXYciL8USxmbR82y4XoSDDc8N8IrDH3kNiXJxSIjLwF09STqOIr_l2ZyMgtgBYgmR_pBbsOLm2kQOyr1DfGCr-Dhwy6M3xEIPvsLsoXd-syDn7bZeTJY5pgqsB5Prvfz7CjeoGDStWcUZkjeFYR_Nn5TY7PBqGpodK35ospKz8tCXi_a5jpG_g==" }
+        ]
+      },
+      {
+        id: "lyon-fr",
+        city: "里昂 (Lyon)",
+        country: "法國 🇫🇷",
+        countryCode: "FR",
+        lat: 45.7640,
+        lon: 4.8357,
+        severity: 4,
+        heatWeight: 0.84,
+        period: "2026年10月",
+        scale: "數萬人罷工遊行與夜間騷亂",
+        categories: ["education", "cost"],
+        tags: ["集會禁令", "夜間縱火與洗劫", "學生與工會串聯"],
+        summary: "法國第二大都會區隨巴黎學運與通膨抗爭同步引爆，市中心夜間出現商店洗劫與路障縱火，當局頒布緊急集會禁令。",
+        catalyst: "呼應全法高中生教育改革抗爭與反高油價、高通膨總罷工。",
+        unrestDetails: "里昂白萊果廣場（Place Bellecour）周邊在日間工會遊行後爆發夜間警民激戰，激進份子砸毀銀行與商鋪櫥窗、焚燒車輛，鎮暴警察動用催淚瓦斯與水炮驅散。",
+        govResponse: "羅納省（Rhône）省長辦公室宣布禁止未經授權之市中心集會，並實施重點街區夜間管制。",
+        sources: [
+          { title: "Los Angeles Times — France bans unauthorized demonstrations in Paris, Lyon and Marseille", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFaac_u-7Yg3Zclk9B1zTfKrFIHTDKa_WIjzGKDjWAdHt9ngTqHpnzin_jocK8hoSAEZF6nfFXyMX1KV7UX6L3cr72xzr50aUFzwK6FyOPv-hKL73RnOf_CwG2qAi1mpCtItl339PTnVh9UO7uLhL4uYQfZBbNTbkprdA3MPaCIGdqOBN55bUkLrtwvuvl8SV1jfO7zRV1tBvmyPg4-ZTFBMKgSHKT5Yaa2YkbYYbR0w1DAhoWJyc6lYn-lZ9dCcO3V" },
+          { title: "風傳媒 (Storm Media) — 法國巴黎、馬賽、里昂和平抗議遭激進份子劫持演變暴動", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE_Ck_haHxc3LQumal6FE4og6FbENrVCxYmHLKyGblt5g09t5-3qYOpJxZV8S5Muqrhl4BoESUyglh7K09uaQp0qu3-94Q2eLqkci0GVTDHOwy9_iTiJphtsi7h" }
+        ]
+      },
+      {
+        id: "marseille-fr",
+        city: "馬賽 (Marseille)",
+        country: "法國 🇫🇷",
+        countryCode: "FR",
+        lat: 43.2965,
+        lon: 5.3698,
+        severity: 4,
+        heatWeight: 0.85,
+        period: "2026年10月",
+        scale: "數萬人上街 / 大規模警力封鎖舊港區",
+        categories: ["education", "cost"],
+        tags: ["舊港區衝突", "局部宵禁", "反高生活成本"],
+        summary: "南法最大港城馬賽爆發大規模反通膨與青年抗爭，舊港區（Vieux-Port）與市中心商業街發生打砸搶與警民對峙。",
+        catalyst: "南法高失業率、燃料價格上漲與公立學校資源匱乏多重疊加，引爆青年與勞工強烈不滿。",
+        unrestDetails: "示威群眾與蒙面青年在馬賽舊港與卡內比埃爾大道（La Canebière）焚燒路障、破壞公車站與商鋪，與共和國保安隊（CRS）爆發激烈衝突。",
+        govResponse: "法國政府將馬賽列為局部宵禁與集會禁令重點城市，增派裝甲維安車輛巡邏。",
+        sources: [
+          { title: "Malay Mail / AFP — French authorities ban demonstrations & enforce curfews in major cities", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFlo8flJg2hpYNEpzrvTNG-jR_FXlv9ZREdNVBAJdppRmCT7zABpgWkEx6iAwBGw03HvEUr6A5JnzRAVqlrlP3j-_F2IVSias8F7uJKJpGTC4Th2BGVC-aRPro3eMOlDZIfh515jXKjQNxFK10sSnII0iFH41B3ErlOpuRWkv5_j2H0eCM7FNo7SRSSgHIxXh-bV-8EjsfJ7ngUmXtSo8Y5MdIv8RGzswaWU62lfUVdGgxMdJMVLNXJKXJXiFqrQZdrZQNEY9fCVNZFdWlq5AMTr75lqqu9e0yiYz2jmA==" },
+          { title: "工商時報 (CTEE) — 法國大城街頭縱火與商店洗劫衝擊", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFxSmc-4cYIlxUFJ4-FNfR0UiZ2boqO3bweK0TIvo8m6qJR96ek8F-ZfCdo7Lq3nXrMqdHadG01-Lq4rySfgI80iDmUQIdOp3tNaItRe9eu_U0B_1bALkA81scGzKrNVum9nVM3Gxwfjg==" }
+        ]
+      },
+      {
+        id: "bordeaux-fr",
+        city: "波爾多 (Bordeaux)",
+        country: "法國 🇫🇷",
+        countryCode: "FR",
+        lat: 44.8378,
+        lon: -0.5792,
+        severity: 4,
+        heatWeight: 0.78,
+        period: "2026年10月",
+        scale: "數萬人參與罷課與工會遊行",
+        categories: ["education", "cost"],
+        tags: ["市政廳周邊衝突", "學生罷課", "公共設施受損"],
+        summary: "西南部重鎮波爾多爆發大規模學生與工會聯合示威，夜間出現街頭縱火與市政設施破壞。",
+        catalyst: "高中與大學生抗議教育資源不足及入學制度，並結合工會反通膨訴求。",
+        unrestDetails: "遊行隊伍行經波爾多市中心勝利廣場（Place de la Victoire）時演變為警民衝突，路障遭點燃、部分商店受損。",
+        govResponse: "地方當局強化市中心夜間警力部署並限制高風險集會路線。",
+        sources: [
+          { title: "力報 (Exmoo) — 法國巴黎、馬賽、波爾多遊行演變暴力衝突與商店劫掠", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE1R1QMoHma3WOpjis5R_7Qnd0gHJEWv6ZatVlUgtP3D0tQYN9GgXWuHqxHRw_frB4R1W1xE1SRw2wg35laVplsybsUDtLLGYF_ot3ppczMBJmZQuXOso7-jNUJW5Mg" }
+        ]
+      },
+      {
+        id: "turin-bologna-it",
+        city: "杜林 & 波隆納 (Turin & Bologna)",
+        country: "義大利 🇮🇹",
+        countryCode: "IT",
+        lat: 44.4949,
+        lon: 11.3426,
+        severity: 4,
+        heatWeight: 0.82,
+        period: "2026年10月",
+        scale: "數萬名青年與工會成員上街",
+        categories: ["education", "cost"],
+        tags: ["大學城巷戰", "催淚瓦斯與水炮", "反梅洛尼政府"],
+        summary: "義大利北部工業與大學重鎮杜林、波隆納爆發激烈青年抗爭，示威者焚燒路障並向警方投擲石塊。",
+        catalyst: "波隆納與杜林大學生抗議高昂房租、學費與生活成本，反對右翼政府削減社會福利與教育投資。",
+        unrestDetails: "示威者試圖突破警方封鎖線進入市政與交通樞紐，雙方爆發肢體衝突，警方動用催淚瓦斯與水炮驅散。",
+        govResponse: "納入義大利內閣緊急治安法令管制範圍，加強火車站與大學區維安。",
+        sources: [
+          { title: "i24NEWS — Clashes in Milan, Turin and Bologna as Italian youth protest living costs", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE6kfglrQeAusvYG1_wLyHxFEB_UJvt_7CuXEWDcJi0Mtua0nf6pfEKudc4EGTnZLYWIGpNuAoLb0OzBnNyJXIofypokc72CJ-1q7kWGX_BbteYXeQlkadlkY6pEhF1lPmADhQgGzVUypV_vLPsbgt9UqbMVFSS1uoeGGNnC82bMpn35aenB-hSZWbCY8IKpP-VNrWyhd3_A7adxDDUdMBtWz68Tv0zY9z3t3EtjHCOsX3v4VSbVb7B_dlJXmh1Tq_POC1lEAniFezFK_vAB6p4E3CK7RVF2Z2VYaQ=" },
+          { title: "大紀元 — 義大利米蘭、波隆納示威演變警民催淚瓦斯與水炮衝突", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHmIw1_oNQM7qgnaMv_lefHDSna9O_rD-GZpy8ofSGtzeuJ7bGB9A3Ig4PpYT8ZJJgUaMe4fiVT96pAmgGkYKuczvqbQdM6KcKXpjQN8Ndc1G-QRMBA4fVsX4c9TRuw2wiqC2toq7ilEJlvCvP2cUZM3h3rpg9oy_MsW5OtFw67JVedu0taFF7b_VuGdxJV0FnkJwVH6pcPnB5QaeADxI4qg0Fvo1ZT21lPkuIcVRuA7OfSDBjjcRPkudegiWYJp8VTdy5gXQ4SYJXjVjAsyeFKDHPpxB85" }
+        ]
+      },
+      {
+        id: "venice-it",
+        city: "威尼斯 (Venice)",
+        country: "義大利 🇮🇹",
+        countryCode: "IT",
+        lat: 45.4408,
+        lon: 12.3155,
+        severity: 4,
+        heatWeight: 0.78,
+        period: "2025年 – 2026年10月24日（聖馬可廣場最高警戒）",
+        scale: "雙年展逾 2,000 人罷工衝突 + 10月反觀光・住房・農民與青年串聯",
+        categories: ["housing", "cost", "education"],
+        tags: ["聖馬可廣場最高警戒", "反過度觀光與入城費", "雙年展2000人罷工衝突", "威尼托農民與學生動員"],
+        summary: "【10/24 新增熱區】威尼斯省督府針對10月蔓延全義的「10月17日運動」與青年快閃示威，將聖馬可廣場列為「最高警戒」；同時市民持續發起反過度觀光、反10歐元入城費與住房掏空抗爭，且2026年5月威尼斯雙年展更爆發逾2,000人罷工與警民衝突。",
+        catalyst: "三大抗爭匯流：(1) 威尼斯歷史中心人口跌破 4.9 萬人，大量民宅轉為 Airbnb 短租，市民抗議政府收最高 10 歐元「入城費」將城市主題樂園化卻未解決高房租與驅離危機；(2) 2026年10月全義反通膨與反教育削減浪潮（含威尼托大區農民抗議高油價）；(3) 2026年5月第61屆威尼斯雙年展因俄羅斯與以色列參展爭議引爆文化界與親巴勒斯坦團體怒火。",
+        unrestDetails: "2026年5月威尼斯雙年展約 20 個國家館閉館罷工，逾 2,000 名工作人員與示威者走上街頭並與警方爆發肢體衝突；10月期間，威尼斯學生與威尼托（Veneto）農民集結抗議高生活與燃料成本，反過度觀光住戶團體亦針對短租公寓與收費閘門發起抗議行動。",
+        govResponse: "【10/24 最新動態】威尼斯省督府（Prefecture）將聖馬可廣場（Piazza San Marco）及主要水道樞紐列為最高安全警戒（Maximum Alert），部署大批安全部隊嚴防米蘭式的快閃暴動重演；美國駐義使領館亦將威尼斯列入示威避行提醒範圍。",
+        sources: [
+          { title: "U.S. Embassy & Consulates in Italy — Demonstration Alert (Venice, Milan, Rome)", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFMurM2vvWI3FdJ-_-bp4nZMBEUvie3iE4HPop70wPys4M-L6N8KiFu8nWp9LvevdMjfqkZwy12yJhQL4YqZSZNj5au171yNjuqxM-kc9giRD__W5UiwxzEwzmen_HVrw1jyND0Zp6nLwp1jvEMFRnyZs2yEZOuGcCvFVtr2k6B2vdEIyLAvJAqTBg=" },
+          { title: "The Guardian — Venice protesters clash over €10 tourist entry fee & severe housing crisis", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGvH5CxMeVTuTf8JJp23c-kM7t8S7YPsYhYlCdYd6Jj8x-68jpZotCgAzgytnoaNJPv0S2qgeWTgTvKngpyVwJP8Hj58GOVm29u0_WhEG6j3MILMbWEKEXQ_-Ydaph2AXYh4Y46aAiKUdwU7BKm4qCwuezisu0XJRR0sQ0HrhYhIQCSSJ09f88f3Ttr_7E9ppRvNqlr7syLVZOttIs7kCJTOueKdI9AkSuJbJZ_YdhuXEGwMg==" },
+          { title: "Anadolu Agency / Wanted in Rome — Italian youth mobilizations & Veneto regional protests", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHXUuHsPDzEDvWX2an1tHScftS3jcijT93X9QNf0O-30OUyBjKFZmCqryEV2TmxbNE0KIUF6M5Y7pce26yWSYY7oOgjUbR0MuaMNILH03JcssVWyKdq3HbYi5D1eCL5P0hldxBx_p8fO1NKawq44SIGoYvwWdoTWZDDLMYIDi8SHuFjossCpsLIt4x2Tr593tw1vAq-JkYgEBAR2DFGQzX6YC4=" },
+          { title: "關鍵評論網 (The News Lens) — 2026第61屆威尼斯雙年展20館閉館罷工與2,000人上街警民衝突", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEkeh5lfuaR-YrYoMBv2TLUUMfowkzZNIjRn0gEHEqBsCbRSAk1dji8QTfibDrGRAatOCw3wOuC1o9ns8wrpSCxC6-kaGTx_5r3JRPTLC1XU-vCgIdRTT-uWTrIi4gqIeE=" }
+        ]
+      },
+      {
+        id: "barcelona-es",
+        city: "巴塞隆納 (Barcelona)",
+        country: "西班牙 🇪🇸",
+        countryCode: "ES",
+        lat: 41.3874,
+        lon: 2.1686,
+        severity: 4,
+        heatWeight: 0.78,
+        period: "2024年 – 2026年10月",
+        scale: "數萬人反觀光仕紳化與高房租大遊行",
+        categories: ["housing", "cost"],
+        tags: ["反過度觀光", "短租公寓禁令訴求", "租金失控"],
+        summary: "加泰隆尼亞首府長期為歐洲反高房租與反觀光仕紳化前線，2026年秋季再度與馬德里串聯爆發大型居住權抗爭。",
+        catalyst: "短期觀光公寓與外資買盤推升巴塞隆納租金創歷史新高，本地青年與勞工被迫遷出市區。",
+        unrestDetails: "住戶工會（Sindicat de Llogateres）與青年團體發起大規模佔領與罷租倡議遊行，部分抗議針對觀光熱區與地產投資機構。",
+        govResponse: "巴塞隆納市政府宣布計畫在 2028 年前全面取消逾萬間觀光短租牌照，並擴大租金管制區。",
+        sources: [
+          { title: "Northeastern Global News — Why housing crises in Spain and Portugal sparked mass European protests", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE0ltQtQ-Wkncrj9PfPJqky3Qow2rjDkwJr6WlUxP5aErFKbUWMgyM09Qyo9yk1yVFCKwj3b-QGg2CtimTYKjDc5QLI8mwPQ6KDYdVCXWELxmflLk8SDvPGar6-2QhgetN5pvtGUS4sW7vTePjpPscZ5IMmFaQP7kY0Ez6SBJejTjh3caqa-iNpjLbiww==" },
+          { title: "香港中通社 — 西班牙與葡萄牙青年抗議高房價與租金暴漲", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFogi1kzT5scK0hpnZf_265bDiTU1YMIHWeH9fVu1Q39CRiVcG36x45HNsYsRRD0Ccv03WWXRxe5dgEcIXC5AmqxNb8IZrZ_QGMw9TO5Tc_LXnu6p2l-iZjU6orHiJsByFu9QIaFfBn37S92njliMDJMujIHaHB" }
+        ]
+      },
+      {
+        id: "porto-pt",
+        city: "波圖 (Porto)",
+        country: "葡萄牙 🇵🇹",
+        countryCode: "PT",
+        lat: 41.1579,
+        lon: -8.6291,
+        severity: 4,
+        heatWeight: 0.76,
+        period: "2026年10月",
+        scale: "數千至數萬人紮營與抗議警方清場",
+        categories: ["housing", "cost"],
+        tags: ["抗議營地遭拆", "青年無殼世代", "Moradia Para Todos"],
+        summary: "與里斯本同步爆發「無家可歸的一代」紮營抗爭，警方黎明清場行動引發市民聲援與二次集結。",
+        catalyst: "波圖市中心房價與租金因外資與觀光熱潮翻倍，學生與年輕上班族無力負擔。",
+        unrestDetails: "抗議者在市中心廣場搭帳篷過夜抗爭，遭警方拂曉清場並帶走多名運動領袖，隨後引發更大規模抗議集會。",
+        govResponse: "警方強化廣場周邊封鎖，禁止再次搭設帳篷營地。",
+        sources: [
+          { title: "Club of Mozambique / Lusa — Police clear housing protest camps in Lisbon and Porto", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFZzAxT6ToL_g91y9gJxcHyzahUrs45uIP9NjdI-DSXTEepaVGCbQEtra5mGBzfIUkmjpA6garg57J56YXIEkF0M55pwyzbvUlXtwj9ZZszhs34J0xWqS9CYff4nFI-FgYN62CS1ex4fY4x4OhsIWIEdapYj3LBj6QmFb0PIsCT5G4k3cxxBmtdeZ7qO8vQYeMS9i1Fkhg17FaRQt4=" }
+        ]
+      },
+      {
+        id: "the-hague-nl",
+        city: "海牙 (The Hague)",
+        country: "荷蘭 🇳🇱",
+        countryCode: "NL",
+        lat: 52.0705,
+        lon: 4.3007,
+        severity: 4,
+        heatWeight: 0.80,
+        period: "2025年9月 – 2026年9月",
+        scale: "數百至數千名反移民示威者與鎮暴警察衝突",
+        categories: ["migration"],
+        tags: ["反庇護中心暴動", "水炮車鎮壓", "極右翼團體介入"],
+        summary: "荷蘭圍繞難民庇護中心設置與移民政策爆發激烈對立，海牙多次發生反移民團體無視禁令投擲煙火與石塊之暴動。",
+        catalyst: "地方民眾與極右翼團體（如 Defend Netherlands、Identitair Verzet）強烈反對政府設立臨時難民庇護中心（AZC）。",
+        unrestDetails: "在 2025 年 9 月與 2026 年 9 月遭禁止的反移民遊行中，黑衣示威者在海牙街頭向警方投擲重型煙火、磚塊與玻璃瓶，警方動用水炮車、警犬與騎警強制驅散並逮捕數十人。",
+        govResponse: "荷蘭政府與情報機構警告極右翼煽動者跨市鎮串聯製造騷亂，並嚴厲譴責街頭出現之極端主義標語。",
+        sources: [
+          { title: "Al Jazeera — Anti-immigration riots and water cannon deployment in The Hague", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGGkIzcjqGiWPxfUlp2IJ_BaHFq7nFoMBQp5WQePzDQeQ9MnM9GJ-wv9Kr5ycIS1BwJ3zzgW3QWpt9HbSwIDal-9jkft8yNMdjaItxaLly9cerXWiXYFqIPzFmbqGJO_OMmEcyW_FYFNTzhoTcQ1tCqYHNqG_lW0QLVZpx5AnEOPNVqlk59wAu7N0Q43_vFLXiuduN3_B_koS9VgczKKEU=" },
+          { title: "DutchNews.nl — Far-right agitators & asylum center riots across Dutch municipalities", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGjd49v1TI02hYz71A5cD0PkCz06YZn2d8muY2jCjHnrXgnbiHHftx_XK8hfxnHDzfWs8C2aVbvAAXBgn7WE3QIeyY_xCEdUiuZ-QosgzAMglZUZvAO3IUXjnd3SUw3v0_ECOpaqn9-TCPlwmnlzgYr2wBHISeHxBMEF7JnAVtqFhYI3zu8TR_GYKofEBGf" }
+        ]
+      },
+      {
+        id: "belgrade-rs",
+        city: "貝爾格勒 & 諾維薩德 (Belgrade & Novi Sad)",
+        country: "塞爾維亞 🇷🇸",
+        countryCode: "RS",
+        lat: 44.7866,
+        lon: 20.4489,
+        severity: 4,
+        heatWeight: 0.88,
+        period: "2024年11月 – 2026年",
+        scale: "單場逾 10萬人反貪腐與學生封鎖運動",
+        categories: ["governance", "education"],
+        tags: ["諾維薩德車站慘劇", "學生封鎖大學", "信號彈與催淚瓦斯", "反武契奇政府"],
+        summary: "諾維薩德火車站頂棚倒塌奪16命引爆全國反貪腐怒火，大學生主導的封鎖與街頭抗爭延續至2026年並多次爆發流血衝突。",
+        catalyst: "2024年11月諾維薩德（Novi Sad）剛翻修完畢的火車站混凝土頂棚坍塌造成 16 人死亡，民眾歸咎於國家級工程貪腐與監管失職，掀起要求總統武契奇（Aleksandar Vučić）下台與媒體自由的持久運動。",
+        unrestDetails: "全塞爾維亞數十所大學遭學生長期封鎖，首都貝爾格勒與諾維薩德多次爆發大規模圍堵政府大樓與交通幹道行動。示威者、執政黨支持者與鎮暴警察之間多次爆發投擲信號彈、石塊與催淚瓦斯的激烈衝突。",
+        govResponse: "當局展開大規模逮捕並挨批動用過度警力，引發歐洲議會與國際人權組織高度關切。",
+        sources: [
+          { title: "Al Jazeera — Serbia student-led anti-corruption movement and clashes with police", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH5YiSzNOAGiz_9YSYAbZtkVxNFHwQC24gqI-b5rd7eTolvmucw2FkXxQvWrq0ZvKE9LSKsMfJFvkv3ims-Kwai__lzDQEssZxv5ybRyb45xQf4pZ3Y1tQFMWRNWruEAES6aHbFKTMPkAC7r-mE3V05n04qQ6Jact5hnajI6n4Tw8bjucmiNKfCZXF-jmkXaWbVC6NovtOKDYaYOfvG3aDUGw==" },
+          { title: "The Guardian — Serbian protesters clash with riot police & Vučić loyalists", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGPP3MRZUQJfz4GthLwq-eSswDogX7f7j8GzdFI4PHbUOQC3pZoPNVucSOH4PgfC0gm8eHZlxll6HP7eU5suNBMIw3nff6gCujmQA00ci4lHefA9_npoG43xf8_oKoX1Gd3aWA3URjp_9-yErqLBOX5lceoHA5tC_p2mdR5gN9wB5A86hlY9UpF5IwG9GsLsaf_QRLhkhBhoTscKMEXGaA7UxGFoA==" }
+        ]
+      },
+      {
+        id: "tirana-al",
+        city: "地拉那 (Tirana)",
+        country: "阿爾巴尼亞 🇦🇱",
+        countryCode: "AL",
+        lat: 41.3275,
+        lon: 19.8187,
+        severity: 4,
+        heatWeight: 0.80,
+        period: "2025年 – 2026年10月",
+        scale: "數萬名青年與反對派持續包圍總理府",
+        categories: ["governance", "education", "cost"],
+        tags: ["青年反貪腐浪潮", "汽油彈與催淚瓦斯", "學費與通膨抗爭"],
+        summary: "阿爾巴尼亞學生與青年因高學費、生活成本與政府貪腐走上首都地拉那街頭，要求總理下台並與鎮暴警察爆發汽油彈衝突。",
+        catalyst: "教育費用高昂、物價飆漲導致青年大量外流，加上多起高層貪腐醜聞，引發學生與公民社會強烈反彈。",
+        unrestDetails: "示威者多次集結於地拉那總理府與國會外投擲汽油彈（Molotov cocktails）與煙火，警方則以水炮與催淚瓦斯強力驅散。",
+        govResponse: "當局加強首都核心行政區封鎖，並將暴力行為歸咎於反對派政治煽動。",
+        sources: [
+          { title: "The Guardian — Youth-led demonstrations and clashes in Tirana", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGs7UnDtafPrV4Q42AVMnBx0Bt1uJ45SzO9sg1WwOJvk1qq-5s2LLi8UobaYsQszonnQcj7q99JEviDU6Vwm5DJP5FGBPl2Cs0lpFJA5JdsTNOF9wHgz2-jRgGJ5wmWcCmOK0h90nEabr36036W4y6UiZU1TqAJmYKg2iTc_ZeK_YgKWVDnBrKUhUVEx7HHkM00lvCrdZs=" },
+          { title: "力報 (Exmoo) — 阿爾巴尼亞學生走上地拉那街頭抗議學費與貪腐要求總理下台", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFoszjdDfdYUgmyJCiM2Atpaa6rQusVJHjBC8vJxU7xwwRrapUhxhDXT0wtdXYV4SimsJh83MSTfYrGRzoLaEINYGIsIbuqKKZ0DyvVryIqF1GUEOmYEG-LlPacBLfUMg==" }
+        ]
+      },
+      {
+        id: "uk-cities",
+        city: "利物浦・曼徹斯特・倫敦 (UK Cities)",
+        country: "英國 🇬🇧",
+        countryCode: "GB",
+        lat: 53.4084,
+        lon: -2.9916,
+        severity: 4,
+        heatWeight: 0.79,
+        period: "2024年夏 – 2026年持續監測",
+        scale: "逾千人被捕 / 多城反移民騷亂與反極右翼對峙",
+        categories: ["migration"],
+        tags: ["反移民騷亂", "庇護旅館遇襲", "網路假訊息煽動", "快速司法審判"],
+        summary: "英國因網路假訊息與反移民情緒爆發針對庇護旅館與清真寺的多城暴力騷亂，並延續為2025–2026年極右翼與反種族主義陣營的街頭對峙。",
+        catalyst: "2024年7月南港（Southport）持刀攻擊案後，社群網路假訊息煽動極右翼與反移民群眾走上街頭，並與高生活成本及公共服務壓力交織。",
+        unrestDetails: "利物浦、曼徹斯特、赫爾、羅瑟勒姆、貝爾法斯特等地爆發攻擊難民庇護旅館、縱火燒警車與洗劫商店的暴動；倫敦則多次出現大型反移民遊行與反法西斯反制示威的警民衝突。",
+        govResponse: "英國政府啟動緊急治安應變與法院 24 小時快速審判機制，逾千人遭逮捕與判刑，並強化對社群平台煽動暴力之執法。",
+        sources: [
+          { title: "Allianz Commercial — European Political Violence & Civil Unrest Report (UK & France)", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQET0RhOPt7r6PkaPsFbBFKMcN6L3ZotN0lLKd5wW1nyXWqVKQqHoAb6GgrkiuQkN7N8oStUfIYBJJ6vgDSwEo20rLFPLMRpuL7wCl7pBkAV3fYSdlGpF0l954dW_MOEIrMBMISMOa0oWOnAd3WUxjuYJp0pjpwMSuheLU6QympAHuu5UA2w3iVt8T2k89TxxX1S1HMq9vO4RDTUyt_wk1lI" },
+          { title: "UK Unrest Documentation — Anti-immigration riots and counter-protests across England & NI", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFx20ueHVT19z6GNmdiZBH4mmSZBb-QOhz5xQNcQ0aN1xPy1_-_wifvVKHrorOsAfePws-9EEzbMEudktwv-nGFDAKRnIEoKM8CILh5iB5fPJEX2V87rlUynTBy8jhKFAOR-6LABX0sgYn0NOQFjT-O7FLKQMDNn9JPy3bJlxt5Gqg0EwHjoxjEHb_lzpClloEdLg==" }
+        ]
+      },
+      {
+        id: "brussels-be",
+        city: "布魯塞爾 (Brussels)",
+        country: "比利時 🇧🇪",
+        countryCode: "BE",
+        lat: 50.8503,
+        lon: 4.3517,
+        severity: 3,
+        heatWeight: 0.72,
+        period: "2026年10月",
+        scale: "數萬名法語區學生、教師與工會成員遊行",
+        categories: ["education", "cost"],
+        tags: ["法國學運外溢", "反歐盟赤字緊縮", "教育預算抗爭"],
+        summary: "受法國青年抗爭直接外溢影響，比利時法語區學生工會與教師在布魯塞爾發起大規模反緊縮與教育資源遊行。",
+        catalyst: "比利時各級政府為符合歐盟財政赤字規範削減公共與教育開支，加上校舍老舊與師資短缺問題與法國高度相似，迅速引發跨國連動。",
+        unrestDetails: "大批學生與公共部門工會癱瘓布魯塞爾歐盟區與市中心交通，要求撤回緊縮預算並改善校園環境。",
+        govResponse: "比利時警方在歐盟機構與聯邦政府大樓周邊部署封鎖線，嚴防法國式街頭打砸搶蔓延入境。",
+        sources: [
+          { title: "The Irish Times — Belgian student unions and citizens march as French unrest spills over", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFAxNfZsQISjmBLKZg6s2NSctgmrOAWeGQPMpy5aRfvesJKZswXqtFhXuWJsXKCFWIQOuPiO9A5z9EqX6IXFptQ-xGf3nRMQDPbqJbG4e3yeLtFe6LwPBbz5Ay58PZFsAmXFVkh7K4e-635p4qFMr8c_cpti12pb3qEIVebH9Mc5P33BHga5Ct6wx2i2Sdh1DiyAQc5Hjo6jiIsqrvVGLCImw==" }
+        ]
+      },
+      {
+        id: "athens-gr",
+        city: "雅典 (Athens)",
+        country: "希臘 🇬🇷",
+        countryCode: "GR",
+        lat: 37.9838,
+        lon: 23.7275,
+        severity: 3,
+        heatWeight: 0.74,
+        period: "2026年10月",
+        scale: "全國總罷工 / 數千名警察駐守憲法廣場",
+        categories: ["education", "housing", "cost"],
+        tags: ["憲法廣場集會", "全國總罷工", "數千警力戒備"],
+        summary: "希臘學生、教師與工會在雅典憲法廣場發起大規模罷工與反高房租遊行，當局部署數千警力嚴防西歐式暴動重演。",
+        catalyst: "生活成本與雅典房租飆升、公立教育經費長期不足，並聲援同期席捲法、義、西、葡的青年抗爭潮。",
+        unrestDetails: "雅典憲法廣場（Syntagma Square）聚集數萬名罷工勞工與青年學生，部分無政府主義青年與鎮暴警察在國會外發生零星推擠。",
+        govResponse: "希臘政府進入高度戒備狀態，在雅典市中心動員數千名鎮暴警察預先防堵暴力升級。",
+        sources: [
+          { title: "The National Herald — Greek police on high alert as students and unions rally in Athens", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGgAxHGBJSRgBV3-TYDd9aoKK5-QMJk0i-cI4OfWZNADO_3awy68_Dg7J94aRwRuqbGstTBRyUQRGSCCC4-o2rqPoO632o7vF-pJmWlG7b9EROMZzH9ImKWlrBDG9_8PxFGocxHDX2ky_0_IP2XS9-Kn7uxgyG2L3jm3FVlRXkqk6g3PQWE95jOEZShuTJfNWg=" }
+        ]
+      },
+      {
+        id: "dublin-ie",
+        city: "都柏林 (Dublin)",
+        country: "愛爾蘭 🇮🇪",
+        countryCode: "IE",
+        lat: 53.3498,
+        lon: -6.2603,
+        severity: 3,
+        heatWeight: 0.68,
+        period: "2025年 – 2026年",
+        scale: "全國性生活成本與燃油稅示威",
+        categories: ["cost", "migration"],
+        tags: ["燃油價格與稅收", "住房短缺", "移民安置爭議"],
+        summary: "愛爾蘭爆發針對燃油稅調漲、高房租與生活成本壓力的全國性抗議，部分集會亦與難民安置社區爭議交織。",
+        catalyst: "能源與燃油價格高企、碳稅調升，加上都柏林嚴重的住房短缺危機。",
+        unrestDetails: "示威者封鎖都柏林主要幹道與政府大樓周邊，部分反移民團體亦針對尋求庇護者安置場所發起抗議並與警方對峙。",
+        govResponse: "愛爾蘭警方（Gardaí）加強首都交通樞紐與安置中心維安，政府則推出一次性生活成本補貼試圖平息民怨。",
+        sources: [
+          { title: "CIVICUS Monitor — Ireland nationwide protests over fuel prices, cost-of-living and policing", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG-bQUGr0gBM-zEDv4G6zWQcuhUIw-gz0W6GuiZjpXbK6ZUERDOJtnWyPzRNvbsw3zpp6OjcfHmacEQrrAjDpO3ICsWFYsy1Fcm6kIJB2M1EpaECm11rq7FOcgtD52OilTWL_hpvQQK6Dpw349kztWiEzU7gIGrMgKQeuI5ic_oE-8hQu6uuKNj4X6C-l0-CgXuo2MeuRlkshFBN9rbVVOj8OA8_argEoTZM8XOVLoy2U0xa0I-dbuLBEGSy4k=" }
+        ]
+      }
+    ];
+
+    const SPILLOVER_LINKS = [
+      { from: "paris-fr", to: "brussels-be", label: "法語區學運外溢" },
+      { from: "paris-fr", to: "lille-limoges-fr", label: "全法罷工與市政廳衝突串聯" },
+      { from: "paris-fr", to: "lyon-fr", label: "全法罷工串聯" },
+      { from: "paris-fr", to: "marseille-fr", label: "全法罷工串聯" },
+      { from: "paris-fr", to: "bordeaux-fr", label: "全法罷工串聯" },
+      { from: "paris-fr", to: "milan-it", label: "青年反緊縮浪潮連動" },
+      { from: "milan-it", to: "turin-bologna-it", label: "北義抗爭串聯" },
+      { from: "milan-it", to: "venice-it", label: "10月17日運動與北義警戒連動" },
+      { from: "milan-it", to: "rome-it", label: "10月17日運動全義串聯" },
+      { from: "barcelona-es", to: "venice-it", label: "南歐反過度觀光與居住權聯盟" },
+      { from: "madrid-es", to: "lisbon-pt", label: "伊比利住房危機連動" },
+      { from: "madrid-es", to: "barcelona-es", label: "全西居住權串聯" },
+      { from: "lisbon-pt", to: "porto-pt", label: "全葡紮營抗爭" },
+      { from: "milan-it", to: "athens-gr", label: "南歐反高物價聲援" },
+      { from: "belgrade-rs", to: "tirana-al", label: "巴爾幹青年反貪腐潮" }
+    ];
+
+    // =========================================================================
+    // 4. GOOGLE MAPS JAVASCRIPT API INTEGRATION (Modern v=weekly, Zero Legacy)
+    // =========================================================================
+    let gMapInstance = null;
+    let gInfoWindow = null;
+    let gMarkers = [];
+    let gCircles = [];
+    let gPolylines = [];
+    let gmpLoaded = false;
+
+    function loadGoogleMapsBootstrap(apiKey) {
+      return new Promise((resolve, reject) => {
+        if (window.google && window.google.maps && window.google.maps.importLibrary) {
+          resolve();
+          return;
+        }
+        // Official Google Maps JS API Dynamic Library Import Bootstrap
+        // Docs: https://developers.google.com/maps/documentation/javascript/load-maps-js-api?utm_campaign=gmp_git_agentskills_v1
+        ((g) => {
+          var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window;
+          b = b[c] || (b[c] = {});
+          var d = b.maps || (b.maps = {}), r = new Set(), e = new URLSearchParams(),
+            u = () => h || (h = new Promise(async (f, n) => {
+              await (a = m.createElement("script"));
+              e.set("libraries", [...r] + "");
+              for (k in g) e.set(k.replace(/[A-Z]/g, (t) => "_" + t[0].toLowerCase()), g[k]);
+              e.set("callback", c + ".maps." + q);
+              a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+              d[q] = f;
+              a.onerror = () => (h = n(Error(p + " could not load.")));
+              a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+              m.head.append(a);
+            }));
+          d[l] ? console.warn(p + " only loads once.") : (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+        })({
+          key: apiKey,
+          v: "weekly",
+          language: "zh-TW",
+          region: "TW"
+        });
+        resolve();
+      });
+    }
+
+    async function initGoogleMapCanvas(apiKey) {
+      try {
+        await loadGoogleMapsBootstrap(apiKey);
+        const [{ Map, InfoWindow, Circle, Polyline }, { AdvancedMarkerElement, PinElement }] = await Promise.all([
+          google.maps.importLibrary("maps"),
+          google.maps.importLibrary("marker")
+        ]);
+
+        if (!gMapInstance) {
+          // CF9 & Attribution Mandate: mapId ('DEMO_MAP_ID') + renderingType: 'VECTOR' + internalUsageAttributionIds
+          gMapInstance = new Map(document.getElementById("google-map"), {
+            center: { lat: 46.8, lng: 9.5 },
+            zoom: 4.5,
+            isFractionalZoomEnabled: true,
+            renderingType: "VECTOR",
+            mapId: "DEMO_MAP_ID",
+            mapTypeControl: true,
+            zoomControl: true,
+            streetViewControl: true,
+            fullscreenControl: true,
+            internalUsageAttributionIds: ["gmp_git_agentskills_v1"]
+          });
+
+          // Single reusable InfoWindow instance per best practices
+          gInfoWindow = new InfoWindow({
+            maxWidth: 340
+          });
+        }
+
+        gmpLoaded = true;
+        switchMapEngine("google");
+      } catch (err) {
+        alert("Google Maps JS API 載入失敗（若在內嵌預覽視窗受 CSP 限制，請在瀏覽器直接開啟 /Users/sanmu/euroriot/index.html 並輸入有效 API Key）。目前為您保持內建無段縮放熱區地圖模式。");
+        switchMapEngine("vector");
+      }
+    }
+
+    async function renderGoogleMapOverlays() {
+      if (!gmpLoaded || !gMapInstance) return;
+      const [{ Circle, Polyline }, { AdvancedMarkerElement, PinElement }] = await Promise.all([
+        google.maps.importLibrary("maps"),
+        google.maps.importLibrary("marker")
+      ]);
+
+      // Clear previous overlays
+      gMarkers.forEach(m => (m.map = null));
+      gCircles.forEach(c => c.setMap(null));
+      gPolylines.forEach(p => p.setMap(null));
+      gMarkers = [];
+      gCircles = [];
+      gPolylines = [];
+
+      const showHeatmap = document.getElementById("toggle-heatmap").checked;
+      const showSpillover = document.getElementById("toggle-spillover").checked;
+      const radiusFactor = Number(document.getElementById("heat-radius").value) || 65;
+      const filtered = getFilteredHotspots();
+      const filteredIds = new Set(filtered.map(h => h.id));
+
+      // 1. Render Spillover Geodesic Polylines (6-digit hex color required by Maps JS API)
+      if (showSpillover) {
+        SPILLOVER_LINKS.forEach(link => {
+          if (!filteredIds.has(link.from) || !filteredIds.has(link.to)) return;
+          const h1 = HOTSPOTS.find(h => h.id === link.from);
+          const h2 = HOTSPOTS.find(h => h.id === link.to);
+          if (!h1 || !h2) return;
+          const line = new Polyline({
+            path: [
+              { lat: h1.lat, lng: h1.lon },
+              { lat: h2.lat, lng: h2.lon }
+            ],
+            geodesic: true,
+            strokeColor: "#F97316",
+            strokeOpacity: 0.75,
+            strokeWeight: 2.5
+          });
+          line.setMap(gMapInstance);
+          gPolylines.push(line);
+        });
+      }
+
+      // 2. Render Concentric Thermal Hotspot Circles & AdvancedMarkerElement Pins
+      filtered.forEach(h => {
+        const hexColor = h.severity === 5 ? "#EF4444" : h.severity === 4 ? "#F97316" : "#EAB308";
+        const borderHex = h.severity === 5 ? "#991B1B" : h.severity === 4 ? "#9A3412" : "#854D0E";
+
+        if (showHeatmap) {
+          const baseMeters = radiusFactor * 2600 * (h.severity === 5 ? 1.3 : h.severity === 4 ? 1.05 : 0.85);
+          // Outer thermal halo
+          const outerCircle = new Circle({
+            strokeColor: hexColor,
+            strokeOpacity: 0.35,
+            strokeWeight: 1,
+            fillColor: hexColor,
+            fillOpacity: 0.22,
+            map: gMapInstance,
+            center: { lat: h.lat, lng: h.lon },
+            radius: baseMeters,
+            clickable: false
+          });
+          // Inner high-intensity core
+          const innerCircle = new Circle({
+            strokeColor: hexColor,
+            strokeOpacity: 0.75,
+            strokeWeight: 1.5,
+            fillColor: hexColor,
+            fillOpacity: 0.42,
+            map: gMapInstance,
+            center: { lat: h.lat, lng: h.lon },
+            radius: baseMeters * 0.48,
+            clickable: false
+          });
+          gCircles.push(outerCircle, innerCircle);
+        }
+
+        // Modern PinElement + AdvancedMarkerElement (CF7 compliant: uses glyphText, no deprecated Marker)
+        const pin = new PinElement({
+          background: hexColor,
+          borderColor: borderHex,
+          glyphColor: "#FFFFFF",
+          glyphText: `L${h.severity}`,
+          scale: h.id === selectedHotspotId ? 1.25 : 1.0
+        });
+
+        const marker = new AdvancedMarkerElement({
+          map: gMapInstance,
+          position: { lat: h.lat, lng: h.lon },
+          title: `${h.city} · ${h.country}`
+        });
+        marker.append(pin);
+
+        // CF7 compliant click listener on weekly channel
+        marker.addEventListener("click", () => {
+          selectHotspot(h.id, true);
+          const infoNode = document.createElement("div");
+          infoNode.style.padding = "4px";
+          infoNode.style.color = "#0f172a";
+          infoNode.innerHTML = `
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${h.city} (${h.country})</div>
+            <div style="font-size:12px;color:#dc2626;font-weight:600;margin-bottom:4px;">Level ${h.severity} · ${h.period}</div>
+            <div style="font-size:12px;line-height:1.45;color:#334155;">${h.summary}</div>
+          `;
+          gInfoWindow.setContent(infoNode);
+          gInfoWindow.open({
+            anchor: marker,
+            map: gMapInstance
+          });
+        });
+
+        gMarkers.push(marker);
+      });
+    }
+
+    function activateGoogleMapsWithKey() {
+      const input = document.getElementById("gmp-api-key-input");
+      const key = (input.value || "").trim();
+      if (!key) {
+        alert("請先在輸入框貼上您的 GOOGLE_MAPS_API_KEY（可點擊旁邊的 Maps Demo Key 連結免費取得測試金鑰）。");
+        return;
+      }
+      try {
+        localStorage.setItem("GOOGLE_MAPS_API_KEY", key);
+      } catch (e) {}
+      initGoogleMapCanvas(key);
+    }
+
+    function switchMapEngine(engine) {
+      activeEngine = engine;
+      const gMapDiv = document.getElementById("google-map");
+      const vecDiv = document.getElementById("vector-map-wrapper");
+      const badge = document.getElementById("active-engine-badge");
+
+      if (engine === "google" && gmpLoaded) {
+        gMapDiv.classList.remove("hidden");
+        vecDiv.classList.add("hidden");
+        badge.textContent = "目前引擎：Google Maps JavaScript API (Vector Map + AdvancedMarkerElement)";
+        renderGoogleMapOverlays();
+      } else {
+        activeEngine = "vector";
+        gMapDiv.classList.add("hidden");
+        vecDiv.classList.remove("hidden");
+        badge.textContent = "目前引擎：內建無段縮放熱區地圖 (支援滾輪與拖曳)";
+        renderAll();
+      }
+    }
+
+    // =========================================================================
+    // 5. STATE & FILTER LOGIC
+    // =========================================================================
+    let activeCategory = "all";
+    let minSeverity = 0;
+    let selectedHotspotId = "paris-fr";
+
+    const CATEGORY_LABELS = {
+      education: "教育與青年風暴",
+      housing: "居住正義與高房價",
+      cost: "通膨與反緊縮",
+      governance: "反貪腐與民主憲政",
+      migration: "移民與庇護衝突"
+    };
+
+    const SEVERITY_META = {
+      5: { label: "Level 5 · 極高危 (嚴重暴動／宵禁／軍隊進駐)", color: "#ef4444", badgeCls: "bg-red-500/15 text-red-500 border-red-500/30" },
+      4: { label: "Level 4 · 高危 (激烈警民衝突／強行清場)", color: "#f97316", badgeCls: "bg-orange-500/15 text-orange-500 border-orange-500/30" },
+      3: { label: "Level 3 · 中高危 (全國罷工／廣場佔領／戒備)", color: "#eab308", badgeCls: "bg-amber-500/15 text-amber-500 border-amber-500/30" }
+    };
+
+    function getFilteredHotspots() {
+      return HOTSPOTS.filter(h => {
+        const catMatch = activeCategory === "all" || h.categories.includes(activeCategory);
+        const sevMatch = h.severity >= minSeverity;
+        return catMatch && sevMatch;
+      });
+    }
+
+    function setCategory(cat) {
+      activeCategory = cat;
+      document.querySelectorAll(".cat-btn").forEach(btn => {
+        btn.className = "cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-80 transition cursor-pointer";
+      });
+      const activeBtn = document.getElementById("cat-" + cat);
+      if (activeBtn) {
+        activeBtn.className = "cat-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition cursor-pointer";
+      }
+      const filtered = getFilteredHotspots();
+      if (filtered.length > 0 && !filtered.some(h => h.id === selectedHotspotId)) {
+        selectedHotspotId = filtered[0].id;
+      }
+      renderAll();
+    }
+
+    function setSeverity(val) {
+      minSeverity = Number(val);
+      const filtered = getFilteredHotspots();
+      if (filtered.length > 0 && !filtered.some(h => h.id === selectedHotspotId)) {
+        selectedHotspotId = filtered[0].id;
+      }
+      renderAll();
+    }
+
+    // =========================================================================
+    // 6. VECTOR & CANVAS HEATMAP RENDERING
+    // =========================================================================
+    function renderBaseMap() {
+      const gratLayer = document.getElementById("graticule-layer");
+      let gratHtml = "";
+      for (let lon = -10; lon <= 45; lon += 5) {
+        const [x1, y1] = project(LAT_MIN, lon);
+        const [x2, y2] = project(LAT_MAX, lon);
+        gratHtml += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+      }
+      for (let lat = 35; lat <= 60; lat += 5) {
+        const [x1, y1] = project(lat, LON_MIN);
+        const [x2, y2] = project(lat, LON_MAX);
+        gratHtml += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+      }
+      gratLayer.innerHTML = gratHtml;
+
+      const countriesLayer = document.getElementById("countries-layer");
+      let countryHtml = "";
+      EUROPE_COUNTRIES.forEach(c => {
+        let fill = "#18263e";
+        let stroke = "#2c4268";
+        if (c.severity === 5) { fill = "#2e1929"; stroke = "#7f2942"; }
+        else if (c.severity === 4) { fill = "#282136"; stroke = "#5e3a58"; }
+        else if (c.severity === 3) { fill = "#1e2942"; stroke = "#3f567d"; }
+
+        c.polys.forEach(ring => {
+          const pts = ring.map(([lon, lat]) => project(lat, lon).join(",")).join(" ");
+          countryHtml += `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="1.1" stroke-linejoin="round" class="country-poly" vector-effect="non-scaling-stroke"><title>${c.name} (${c.code})</title></polygon>`;
+        });
+      });
+      countriesLayer.innerHTML = countryHtml;
+    }
+
+    function renderHeatmapCanvas() {
+      const canvas = document.getElementById("heatmap-canvas");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!document.getElementById("toggle-heatmap").checked) return;
+
+      const radiusInput = Number(document.getElementById("heat-radius").value) || 65;
+      const [vx, vy, vw, vh] = currentViewBox;
+      const scaleX = 1000 / vw;
+      const scaleY = 680 / vh;
+
+      const filtered = getFilteredHotspots();
+      filtered.forEach(h => {
+        const [px, py] = project(h.lat, h.lon);
+        const cx = (px - vx) * scaleX;
+        const cy = (py - vy) * scaleY;
+        const r = radiusInput * (h.severity === 5 ? 1.25 : h.severity === 4 ? 1.0 : 0.8) * Math.sqrt(scaleX);
+
+        const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+        if (h.severity === 5) {
+          grad.addColorStop(0, "rgba(239, 68, 68, 0.88)");
+          grad.addColorStop(0.35, "rgba(249, 115, 22, 0.55)");
+          grad.addColorStop(0.7, "rgba(234, 179, 8, 0.22)");
+          grad.addColorStop(1, "rgba(239, 68, 68, 0)");
+        } else if (h.severity === 4) {
+          grad.addColorStop(0, "rgba(249, 115, 22, 0.80)");
+          grad.addColorStop(0.45, "rgba(234, 179, 8, 0.42)");
+          grad.addColorStop(1, "rgba(249, 115, 22, 0)");
+        } else {
+          grad.addColorStop(0, "rgba(234, 179, 8, 0.72)");
+          grad.addColorStop(0.5, "rgba(234, 179, 8, 0.28)");
+          grad.addColorStop(1, "rgba(234, 179, 8, 0)");
+        }
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function renderOverlayMarkers() {
+      const spilloverLayer = document.getElementById("spillover-layer");
+      const markersLayer = document.getElementById("markers-layer");
+      const showSpillover = document.getElementById("toggle-spillover").checked;
+      const showLabels = document.getElementById("toggle-labels").checked;
+      const filtered = getFilteredHotspots();
+      const filteredIds = new Set(filtered.map(h => h.id));
+
+      // Scale marker radius inversely with zoom so markers stay crisp when zoomed in
+      const zoomScale = currentViewBox[2] / 1000;
+
+      let spillHtml = "";
+      if (showSpillover) {
+        SPILLOVER_LINKS.forEach(link => {
+          if (!filteredIds.has(link.from) || !filteredIds.has(link.to)) return;
+          const h1 = HOTSPOTS.find(h => h.id === link.from);
+          const h2 = HOTSPOTS.find(h => h.id === link.to);
+          if (!h1 || !h2) return;
+          const [x1, y1] = project(h1.lat, h1.lon);
+          const [x2, y2] = project(h2.lat, h2.lon);
+          const mx = (x1 + x2) / 2;
+          const my = (y1 + y2) / 2 - 18 * zoomScale;
+          spillHtml += `<path d="M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}" fill="none" stroke="#fb923c" stroke-width="${1.6 * zoomScale}" opacity="0.65" class="spillover-line"><title>${link.label}</title></path>`;
+        });
+      }
+      spilloverLayer.innerHTML = spillHtml;
+
+      let markerHtml = "";
+      filtered.forEach(h => {
+        const [x, y] = project(h.lat, h.lon);
+        const isSelected = h.id === selectedHotspotId;
+        const color = h.severity === 5 ? "#ef4444" : h.severity === 4 ? "#f97316" : "#eab308";
+        const baseR = (h.severity === 5 ? 8.5 : h.severity === 4 ? 7 : 6) * Math.pow(zoomScale, 0.75);
+        const r = isSelected ? baseR * 1.28 : baseR;
+
+        if (h.severity === 5 || isSelected) {
+          markerHtml += `<circle cx="${x}" cy="${y}" r="${r * 1.45}" fill="none" stroke="${color}" stroke-width="${2 * zoomScale}" class="hotspot-pulse" />`;
+        }
+
+        if (isSelected) {
+          markerHtml += `<circle cx="${x}" cy="${y}" r="${r * 1.65}" fill="none" stroke="#ffffff" stroke-width="${2 * zoomScale}" stroke-dasharray="${3 * zoomScale} ${2 * zoomScale}" />`;
+        }
+
+        markerHtml += `
+          <g class="hotspot-node" onclick="selectHotspot('${h.id}', true)">
+            <circle cx="${x}" cy="${y}" r="${r}" fill="${color}" stroke="#0f172a" stroke-width="${2 * zoomScale}" />
+            <circle cx="${x}" cy="${y}" r="${Math.max(1.5 * zoomScale, r * 0.38)}" fill="#ffffff" />
+          </g>
+        `;
+
+        if (showLabels) {
+          const shortName = h.city.split(" (")[0];
+          const rawOffsetY = h.id === "lyon-fr" ? -13 : h.id === "marseille-fr" ? 18 : h.id === "turin-bologna-it" ? 17 : -12;
+          const labelOffsetY = rawOffsetY * Math.pow(zoomScale, 0.75);
+          const fontSize = Math.max(12 * Math.pow(zoomScale, 0.75), 4);
+          const boxW = shortName.length * fontSize * 1.08;
+          const boxH = fontSize * 1.25;
+          const fontWeight = isSelected ? "700" : "600";
+          const fill = isSelected ? "#ffffff" : "#e2e8f0";
+          markerHtml += `
+            <g onclick="selectHotspot('${h.id}', true)" class="cursor-pointer">
+              <rect x="${x - boxW / 2}" y="${y + labelOffsetY - boxH * 0.78}" width="${boxW}" height="${boxH}" rx="${3 * zoomScale}" fill="#09101d" opacity="0.84" />
+              <text x="${x}" y="${y + labelOffsetY + fontSize * 0.08}" text-anchor="middle" fill="${fill}" font-size="${fontSize}" font-weight="${fontWeight}">${shortName}</text>
+            </g>
+          `;
+        }
+      });
+      markersLayer.innerHTML = markerHtml;
+    }
+
+    // =========================================================================
+    // 7. DETAIL PANEL & CARDS RENDERING
+    // =========================================================================
+    function selectHotspot(id, shouldFocusCamera = false) {
+      selectedHotspotId = id;
+      const h = HOTSPOTS.find(item => item.id === id);
+      if (h && shouldFocusCamera) {
+        if (activeEngine === "google" && gMapInstance) {
+          gMapInstance.moveCamera({
+            center: { lat: h.lat, lng: h.lon },
+            zoom: 7.5
+          });
+        } else {
+          const [px, py] = project(h.lat, h.lon);
+          const targetW = Math.min(currentViewBox[2], 380);
+          const targetH = targetW * 0.68;
+          applyViewBox(px - targetW / 2, py - targetH / 2, targetW, targetH);
+        }
+      }
+      renderAll();
+    }
+
+    function renderDetailPanel() {
+      const panel = document.getElementById("detail-panel");
+      const h = HOTSPOTS.find(item => item.id === selectedHotspotId) || HOTSPOTS[0];
+      const sev = SEVERITY_META[h.severity];
+
+      const catBadges = h.categories.map(c =>
+        `<span class="px-2.5 py-0.5 rounded-md text-xs font-medium bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)]">${CATEGORY_LABELS[c]}</span>`
+      ).join("");
+
+      const tagBadges = h.tags.map(t =>
+        `<span class="px-2 py-0.5 rounded text-xs bg-[var(--background)] text-[var(--muted-foreground)] border border-[var(--border)]">#${t}</span>`
+      ).join("");
+
+      const sourcesList = h.sources.map((s, idx) => `
+        <li class="flex items-start gap-2 text-xs leading-relaxed">
+          <span class="px-1.5 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] font-mono text-[var(--muted-foreground)] shrink-0">[${idx + 1}]</span>
+          <a href="${s.url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline font-medium break-all">
+            ${s.title} ↗
+          </a>
+        </li>
+      `).join("");
+
+      const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lon}`;
+
+      panel.innerHTML = `
+        <div class="flex items-start justify-between gap-3 border-b border-[var(--border)] pb-3.5">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border ${sev.badgeCls}">
+                ${sev.label}
+              </span>
+              <span class="text-xs text-[var(--muted-foreground)] font-mono">
+                ${h.lat.toFixed(4)}°N, ${h.lon.toFixed(4)}°E
+              </span>
+            </div>
+            <h2 class="text-xl font-bold text-[var(--foreground)] mt-2">${h.city} · ${h.country}</h2>
+            <div class="text-xs text-[var(--muted-foreground)] mt-1">
+              <strong>發生時間：</strong>${h.period} ｜ <strong>動員規模：</strong>${h.scale}
+            </div>
+          </div>
+          <a
+            href="${gmapUrl}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/15 text-blue-500 border border-blue-500/30 hover:bg-blue-500/25 transition"
+            title="在 Google Maps 新分頁開啟此座標與街景"
+          >
+            📍 Google Maps 開啟 ↗
+          </a>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5">
+          ${catBadges}
+          ${tagBadges}
+        </div>
+
+        <div class="bg-[var(--background)] border border-[var(--border)] rounded-xl p-3.5 space-y-2.5 text-sm leading-relaxed">
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wider text-red-500 mb-0.5">事件核心摘要</div>
+            <p class="text-[var(--foreground)] font-medium">${h.summary}</p>
+          </div>
+          <div class="pt-2 border-t border-[var(--border)]">
+            <div class="text-xs font-bold text-[var(--muted-foreground)] mb-0.5">導火線與結構性成因 (Catalysts)</div>
+            <p class="text-xs text-[var(--foreground)] leading-relaxed">${h.catalyst}</p>
+          </div>
+          <div class="pt-2 border-t border-[var(--border)]">
+            <div class="text-xs font-bold text-[var(--muted-foreground)] mb-0.5">示威與暴動衝突詳情 (Unrest Dynamics)</div>
+            <p class="text-xs text-[var(--foreground)] leading-relaxed">${h.unrestDetails}</p>
+          </div>
+          <div class="pt-2 border-t border-[var(--border)]">
+            <div class="text-xs font-bold text-[var(--muted-foreground)] mb-0.5">政府與維安因應措施 (Government Response)</div>
+            <p class="text-xs text-[var(--foreground)] leading-relaxed">${h.govResponse}</p>
+          </div>
+        </div>
+
+        <div class="bg-[var(--background)] border border-[var(--border)] rounded-xl p-3.5">
+          <div class="text-xs font-bold text-[var(--foreground)] mb-2 flex items-center justify-between">
+            <span>新聞報導與國際機構來源出處 (Verified Sources)</span>
+            <span class="text-xs text-[var(--muted-foreground)] font-normal">點擊開啟原始連結</span>
+          </div>
+          <ul class="space-y-2">
+            ${sourcesList}
+          </ul>
+        </div>
+      `;
+    }
+
+    function renderCardsGrid() {
+      const grid = document.getElementById("cards-grid");
+      const filtered = getFilteredHotspots();
+      document.getElementById("filter-count-label").textContent = `顯示 ${filtered.length} / ${HOTSPOTS.length} 個熱區`;
+
+      grid.innerHTML = filtered.map(h => {
+        const isSelected = h.id === selectedHotspotId;
+        const sev = SEVERITY_META[h.severity];
+        const borderCls = isSelected ? "border-red-500 ring-2 ring-red-500/20" : "border-[var(--border)] hover:border-red-500/40";
+        const sourceLinks = h.sources.map((s, i) =>
+          `<a href="${s.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="text-xs text-blue-500 hover:underline">[來源${i + 1}: ${s.title.split(" — ")[0]}]</a>`
+        ).join(" ");
+
+        return `
+          <div onclick="selectHotspot('${h.id}', true)" class="bg-[var(--background)] border ${borderCls} rounded-xl p-4 cursor-pointer transition flex flex-col justify-between gap-3">
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="px-2 py-0.5 rounded text-xs font-semibold border ${sev.badgeCls}">
+                  Level ${h.severity}
+                </span>
+                <span class="text-xs text-[var(--muted-foreground)]">${h.period}</span>
+              </div>
+              <h3 class="text-base font-bold text-[var(--foreground)] mt-2">${h.city} · ${h.country}</h3>
+              <p class="text-xs text-[var(--muted-foreground)] mt-1 line-clamp-3 leading-relaxed">${h.summary}</p>
+            </div>
+            <div class="pt-2.5 border-t border-[var(--border)] space-y-1.5">
+              <div class="text-xs text-[var(--foreground)] font-medium">規模：${h.scale}</div>
+              <div class="flex flex-wrap gap-2 items-center">
+                <span class="text-xs text-[var(--muted-foreground)]">出處：</span>
+                ${sourceLinks}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderAll() {
+      if (activeEngine === "google" && gmpLoaded) {
+        renderGoogleMapOverlays();
+      } else {
+        renderHeatmapCanvas();
+        renderOverlayMarkers();
+      }
+      renderDetailPanel();
+      renderCardsGrid();
+    }
+
+    // Initialize on load
+    renderBaseMap();
+    setupVectorPanAndZoom();
+    renderAll();
+
+    // Auto-check URL param ?apiKey= or localStorage for GOOGLE_MAPS_API_KEY
+    (function autoCheckApiKey() {
+      const params = new URLSearchParams(window.location.search);
+      const urlKey = params.get("apiKey") || window.GOOGLE_MAPS_API_KEY;
+      let savedKey = null;
+      try {
+        savedKey = localStorage.getItem("GOOGLE_MAPS_API_KEY");
+      } catch (e) {}
+      const key = urlKey || savedKey;
+      if (key && key !== "YOUR_GOOGLE_MAPS_API_KEY_HERE") {
+        document.getElementById("gmp-api-key-input").value = key;
+        initGoogleMapCanvas(key);
+      }
+    })();
+  </script>
+</body>
+</html>

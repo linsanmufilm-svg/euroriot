@@ -1,0 +1,5 @@
+.env
+api_key.txt
+env-config.js
+__pycache__/
+.DS_Store
